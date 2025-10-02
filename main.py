@@ -11,6 +11,7 @@ from logger import Logger
 from constraint_verifier import ConstraintVerifier
 from export_manager import ExportManager
 from config_manager import ConfigManager
+from data_loader import DataLoader
 
 class HospitalScheduler:
     def __init__(self, people_data=None, night_dates=None, settings=None, config_file=None):
@@ -56,6 +57,9 @@ class HospitalScheduler:
         
         # Initialize the export manager
         self.export_manager = ExportManager(self)
+        
+        # Initialize the data loader
+        self.data_loader = DataLoader(self.logger)
     
     def _log(self, category, level, message):
         """Internal logging method - delegates to Logger class"""
@@ -109,126 +113,17 @@ class HospitalScheduler:
         
     @staticmethod
     def load_people_data_from_csv(csv_file, log_level='info'):
-        """Load person constraints from desiderata.csv file"""
-        people_data = {}
-        
-        # Try different encodings
-        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
-        
-        for encoding in encodings:
-            try:
-                with open(csv_file, 'r', encoding=encoding) as file:
-                    reader = csv.DictReader(file)
-                    
-                    # Debug: print column names only if logging level allows
-                    if log_level in ['info', 'debug']:
-                        print(f"Columns found in {csv_file}: {reader.fieldnames}")
-                    
-                    for row in reader:
-                        # Handle potential BOM or encoding issues in column names
-                        person_key = None
-                        for key in row.keys():
-                            if 'persona' in key.lower() or key.strip() == 'Persona':
-                                person_key = key
-                                break
-                        
-                        if not person_key:
-                            if log_level in ['error', 'info', 'debug']:
-                                print(f"Available keys: {list(row.keys())}")
-                            raise KeyError("Could not find 'Persona' column")
-                        
-                        person_id = row[person_key]
-                        
-                        # Parse night shift availability
-                        night_available = True  # Default to available
-                        notti_col = 'Notti'
-                        if notti_col in row and row[notti_col].strip().upper() == 'N':
-                            night_available = False
-                        
-                        # Parse forbidden shifts
-                        forbidden_shifts = []
-                        for i in range(1, 7):
-                            shift_col = f'Turno vietato {i}'
-                            if shift_col in row and row[shift_col].strip():
-                                forbidden_shifts.append(HospitalScheduler.parse_shift(row[shift_col]))
-                        
-                        # Parse vacation dates (Ferie) and convert to forbidden shifts
-                        ferie_col = 'Ferie'
-                        if ferie_col in row and row[ferie_col].strip():
-                            vacation_shifts = HospitalScheduler.parse_vacation_dates(row[ferie_col])
-                            forbidden_shifts.extend(vacation_shifts)
-                            if log_level in ['info', 'debug']:
-                                print(f"Person {person_id}: Added {len(vacation_shifts)} vacation-based forbidden shifts")
-                        
-                        # Parse forbidden weekends
-                        forbidden_weekends = []
-                        for i in range(1, 4):
-                            weekend_col = f'Weekend vietato {i}'
-                            if weekend_col in row and row[weekend_col].strip():
-                                forbidden_weekends.append(HospitalScheduler.parse_date(row[weekend_col]))
-                        
-                        people_data[person_id] = {
-                            'forbidden_shifts': forbidden_shifts,
-                            'forbidden_weekends': forbidden_weekends,
-                            'night_available': night_available  # New: night shift availability
-                        }
-                        
-                        if log_level in ['info', 'debug']:
-                            print(f"Person {person_id}: Night shifts available = {night_available}")
-                
-                break  # Successfully read with this encoding
-            
-            except (UnicodeDecodeError, KeyError) as e:
-                if encoding == encodings[-1]:  # Last encoding tried
-                    if log_level in ['error', 'info', 'debug']:
-                        print(f"Could not read {csv_file} with any encoding: {e}")
-                    # Create minimal setup for testing
-                    for i in range(1, 6):
-                        people_data[str(i)] = {
-                            'forbidden_shifts': [],
-                            'forbidden_weekends': [],
-                            'night_available': True  # Default for testing
-                        }
-                continue
-        
-        return people_data
+        """DEPRECATED: Use DataLoader.load_people_data() instead"""
+        print("⚠️  Warning: load_people_data_from_csv is deprecated. Use DataLoader.load_people_data() for better format support.")
+        loader = DataLoader()
+        return loader.load_people_data(csv_file, log_level)
 
     @staticmethod
     def load_night_dates_from_csv(notti_file, log_level='info'):
-        """Load required night dates from notti.csv file"""
-        night_dates = []
-        
-        # Try different encodings
-        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
-        
-        for encoding in encodings:
-            try:
-                with open(notti_file, 'r', encoding=encoding) as file:
-                    content = file.read()
-                    lines = content.strip().split('\n')
-                    
-                    if log_level in ['info', 'debug']:
-                        print(f"Reading required night dates from {notti_file}...")
-                    for line in lines:
-                        date_str = line.strip()
-                        # Skip header line or empty lines
-                        if date_str and not ('notte' in date_str.lower() or 'richiesta' in date_str.lower()):
-                            parsed_date = HospitalScheduler.parse_date(date_str)
-                            if parsed_date:
-                                night_dates.append(parsed_date)
-                                if log_level in ['debug']:
-                                    print(f"  Required night date: {parsed_date}")
-                
-                break  # Successfully read with this encoding
-                
-            except (UnicodeDecodeError, FileNotFoundError) as e:
-                if encoding == encodings[-1]:  # Last encoding tried
-                    if log_level in ['error', 'info', 'debug']:
-                        print(f"Could not read {notti_file}: {e}")
-                        print("No required night dates loaded")
-                continue
-        
-        return night_dates
+        """DEPRECATED: Use DataLoader.load_night_dates() instead"""
+        print("⚠️  Warning: load_night_dates_from_csv is deprecated. Use DataLoader.load_night_dates() for better format support.")
+        loader = DataLoader()
+        return loader.load_night_dates(notti_file, log_level)
 
     @staticmethod
     def parse_shift(shift_str):
@@ -700,9 +595,45 @@ def main():
     # Option 4: Use preset configuration
     preset = 'balanced'  # 'strict', 'balanced', 'optimized', 'debug'
     
-    # Load CSV data
-    people_data = HospitalScheduler.load_people_data_from_csv('desiderata.csv', log_level='error')
-    night_dates = HospitalScheduler.load_night_dates_from_csv('notti.csv', log_level='error')
+    # Load CSV data using new DataLoader
+    data_loader = DataLoader()
+    
+    # Check what formats are supported
+    supported_formats = data_loader.get_supported_formats()
+    dependencies = data_loader.check_dependencies()
+    
+    if 'error' not in ['error']:  # Only show if not in silent mode
+        print(f"📁 Supported file formats: {', '.join(supported_formats)}")
+        if not dependencies['excel_support']:
+            print("💡 Tip: Install pandas and openpyxl for Excel (.xlsx) support: pip install pandas openpyxl")
+    
+    # Try to load data files (supports CSV, XLS, XLSX automatically)
+    people_data = data_loader.load_people_data('desiderata.csv', log_level='error')
+    
+    # Try alternative formats if CSV not found
+    if not people_data or len(people_data) < 2:  # Minimal validation
+        for alt_file in ['desiderata.xlsx', 'desiderata.xls']:
+            if os.path.exists(alt_file):
+                print(f"📊 Found {alt_file}, loading...")
+                people_data = data_loader.load_people_data(alt_file, log_level='error')
+                break
+    
+    night_dates = data_loader.load_night_dates('notti.csv', log_level='error')
+    
+    # Try alternative formats for night dates
+    if not night_dates:
+        for alt_file in ['notti.xlsx', 'notti.xls']:
+            if os.path.exists(alt_file):
+                print(f"🌙 Found {alt_file}, loading...")
+                night_dates = data_loader.load_night_dates(alt_file, log_level='error')
+                break
+    
+    # Validate loaded data
+    is_valid, validation_errors = data_loader.validate_data(people_data, night_dates)
+    if not is_valid:
+        print("⚠️  Data validation errors:")
+        for error in validation_errors:
+            print(f"   {error}")
     
     # Define scheduling period (example: October 2025)
     start_date = datetime(2025, 10, 1).date()
