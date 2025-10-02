@@ -12,6 +12,7 @@ from constraint_verifier import ConstraintVerifier
 from export_manager import ExportManager
 from config_manager import ConfigManager
 from data_loader import DataLoader
+from constraint_rules_engine import ConstraintRulesEngine, ConstraintSeverity
 
 class HospitalScheduler:
     def __init__(self, people_data=None, night_dates=None, settings=None, config_file=None):

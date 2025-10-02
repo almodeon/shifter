@@ -1,6 +1,7 @@
 import json
 import os
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Dict, Any, List, Tuple, Optional  # Make sure List is imported
 
 class ConfigManager:
     def __init__(self, config_file: Optional[str] = None):
@@ -128,8 +129,8 @@ class ConfigManager:
             else:
                 base_dict[key] = value
     
-    def validate_settings(self) -> tuple[bool, list[str]]:
-        """Validate current settings and return (is_valid, errors)"""
+    def validate_settings(self) -> Tuple[bool, List[str]]:  # Use Tuple instead of tuple
+        """Validate current settings and return (is_valid, error_list)"""
         errors = []
         
         # Validate numeric constraints
@@ -312,8 +313,8 @@ class ConfigManager:
             return True
         return False
     
-    def list_presets(self) -> list[str]:
-        """List available configuration presets"""
+    def list_presets(self) -> List[str]:  # Change list[str] to List[str]
+        """Get list of available preset names"""
         return ['strict', 'balanced', 'optimized', 'debug']
     
     def print_summary(self) -> None:

@@ -1,119 +1,117 @@
 from datetime import timedelta
+from constraint_rules_engine import ConstraintRulesEngine
 
 class ConstraintVerifier:
     def __init__(self, scheduler):
         """Initialize with reference to main scheduler for accessing settings, people, schedule, etc."""
         self.scheduler = scheduler
         self.logger = scheduler.logger
+        
+        # Initialize the constraint rules engine
+        self.rules_engine = ConstraintRulesEngine(scheduler, scheduler.logger)
+        
+        # Update constraint settings based on scheduler settings
+        self.rules_engine.update_constraint_settings(scheduler.settings)
+        
+        # Initialize last_report for storing the most recent report
+        self.last_report = None
     
     def verify_constraints(self, start_date, end_date):
-        """Comprehensive constraint verification with pass/not-pass for each constraint"""
+        """Comprehensive constraint verification using the rules engine"""
         self.logger.log('constraint_verification', 'info', "\n" + "="*80)
-        self.logger.log('constraint_verification', 'info', "CONSTRAINT VERIFICATION")
+        self.logger.log('constraint_verification', 'info', "CONSTRAINT VERIFICATION (Rules Engine)")
         self.logger.log('constraint_verification', 'info', "="*80)
         
-        all_dates = []
-        current_date = start_date
-        while current_date <= end_date:
-            all_dates.append(current_date)
-            current_date += timedelta(days=1)
+        # Evaluate all constraints using the rules engine
+        results = self.rules_engine.evaluate_all(start_date, end_date)
         
-        total_weeks = len(all_dates) / 7
-        constraints_status = {}
+        # Convert results to the expected format for backward compatibility
+        constraint_status = {}
+        for constraint_id, result in results.items():
+            constraint_status[constraint_id] = 'PASS' if result.passed else 'FAIL'
         
-        # Run all constraint checks
-        constraints_status.update(self._check_morning_staff_weekdays(all_dates))
-        constraints_status.update(self._check_saturday_morning_staff(all_dates))
-        constraints_status.update(self._check_max_afternoon_staff(all_dates))
-        constraints_status.update(self._check_sunday_mp_staff(all_dates))
-        constraints_status.update(self._check_night_coverage(all_dates, start_date, end_date))
-        constraints_status.update(self._check_monthly_night_limits(all_dates))
-        constraints_status.update(self._check_weekly_hours(all_dates, total_weeks))
-        constraints_status.update(self._check_max_consecutive_days(all_dates))
-        constraints_status.update(self._check_night_rest_periods(all_dates))
-        constraints_status.update(self._check_weekend_days_per_month(all_dates))
-        constraints_status.update(self._check_forbidden_shifts(all_dates))
-        constraints_status.update(self._check_vacation_compliance(all_dates))
-        constraints_status.update(self._check_night_availability(all_dates))
-        constraints_status.update(self._check_weekday_morning_coverage(all_dates))
-        constraints_status.update(self._check_weekday_afternoon_coverage(all_dates))
-        constraints_status.update(self._check_weekend_coverage(all_dates))
+        # Generate and log summary
+        self._print_summary(results)
         
-        # Summary
-        self._print_summary(constraints_status)
+        # Generate detailed report
+        report = self.rules_engine.generate_constraint_report(results)
         
-        return constraints_status
+        # Store the detailed report for potential export
+        self.last_report = report
+        
+        return constraint_status
     
-    def _check_morning_staff_weekdays(self, all_dates):
-        """Check minimum morning staff (weekdays)"""
-        self.logger.log('constraint_verification', 'info', "\n1. MINIMUM MORNING STAFF (WEEKDAYS)")
-        self.logger.log('constraint_verification', 'info', "-" * 40)
+    def verify_constraint_group(self, group_name: str, start_date, end_date):
+        """Verify a specific group of constraints"""
+        self.logger.log('constraint_verification', 'info', f"\n=== VERIFYING CONSTRAINT GROUP: {group_name.upper()} ===")
         
-        morning_violations = []
-        for date in all_dates:
-            if date.weekday() < 5:  # Weekday
-                morning_staff = sum(1 for person_id in self.scheduler.people.keys() 
-                                  if 'morning' in self.scheduler.schedule[person_id].get(date, []))
-                required = self.scheduler.settings['min_morning_staff']
-                if morning_staff < required:
-                    morning_violations.append(f"{date}: {morning_staff} staff (need {required})")
+        results = self.rules_engine.evaluate_group(group_name, start_date, end_date)
         
-        if morning_violations:
-            self.logger.log('constraint_verification', 'info', "❌ FAIL")
-            for violation in morning_violations[:5]:  # Show first 5
-                self.logger.log('constraint_verification', 'debug', f"   {violation}")
-            if len(morning_violations) > 5:
-                self.logger.log('constraint_verification', 'debug', f"   ... and {len(morning_violations) - 5} more violations")
-            return {'morning_staff_weekdays': 'FAIL'}
-        else:
-            self.logger.log('constraint_verification', 'info', "✅ PASS")
-            return {'morning_staff_weekdays': 'PASS'}
+        constraint_status = {}
+        for constraint_id, result in results.items():
+            constraint_status[constraint_id] = 'PASS' if result.passed else 'FAIL'
+        
+        return constraint_status
     
-    def _check_saturday_morning_staff(self, all_dates):
-        """Check Saturday morning staff"""
-        self.logger.log('constraint_verification', 'info', "\n2. SATURDAY MORNING STAFF")
-        self.logger.log('constraint_verification', 'info', "-" * 40)
+    def add_custom_constraint(self, constraint_id: str, name: str, description: str, 
+                            evaluation_func, severity: str = "MEDIUM"):
+        """Add a custom constraint to the rules engine"""
+        from constraint_rules_engine import ConstraintSeverity
         
-        saturday_morning_violations = []
-        for date in all_dates:
-            if date.weekday() == 5:  # Saturday
-                morning_staff = sum(1 for person_id in self.scheduler.people.keys() 
-                                  if 'morning' in self.scheduler.schedule[person_id].get(date, []))
-                required = self.scheduler.settings.get('saturday_morning_staff', 2)
-                if morning_staff < required:
-                    saturday_morning_violations.append(f"{date}: {morning_staff} staff (need {required})")
+        severity_map = {
+            "CRITICAL": ConstraintSeverity.CRITICAL,
+            "HIGH": ConstraintSeverity.HIGH,
+            "MEDIUM": ConstraintSeverity.MEDIUM,
+            "LOW": ConstraintSeverity.LOW
+        }
         
-        if saturday_morning_violations:
-            self.logger.log('constraint_verification', 'info', "❌ FAIL")
-            for violation in saturday_morning_violations:
-                self.logger.log('constraint_verification', 'debug', f"   {violation}")
-            return {'saturday_morning_staff': 'FAIL'}
-        else:
-            self.logger.log('constraint_verification', 'info', "✅ PASS")
-            return {'saturday_morning_staff': 'PASS'}
+        sev = severity_map.get(severity.upper(), ConstraintSeverity.MEDIUM)
+        self.rules_engine.add_custom_constraint(constraint_id, name, description, evaluation_func, sev)
     
-    def _check_max_afternoon_staff(self, all_dates):
-        """Check afternoon staff (max 1)"""
-        self.logger.log('constraint_verification', 'info', "\n3. MAXIMUM AFTERNOON STAFF")
-        self.logger.log('constraint_verification', 'info', "-" * 40)
+    def enable_constraint(self, constraint_id: str):
+        """Enable a specific constraint"""
+        self.rules_engine.enable_constraint(constraint_id)
+    
+    def disable_constraint(self, constraint_id: str):
+        """Disable a specific constraint"""
+        self.rules_engine.disable_constraint(constraint_id)
+    
+    def get_available_constraints(self):
+        """Get information about all available constraints"""
+        return self.rules_engine.get_constraint_info()
+    
+    def get_constraint_groups(self):
+        """Get available constraint groups"""
+        return self.rules_engine.get_constraint_groups()
+    
+    def _print_summary(self, results):
+        """Print constraint verification summary using rules engine results"""
+        self.logger.log('constraint_verification', 'info', "\n" + "="*80)
+        self.logger.log('constraint_verification', 'info', "CONSTRAINT VERIFICATION SUMMARY")
+        self.logger.log('constraint_verification', 'info', "="*80)
         
-        afternoon_violations = []
-        for date in all_dates:
-            if date.weekday() < 6:  # Not Sunday (Sunday has MP shift)
-                afternoon_staff = sum(1 for person_id in self.scheduler.people.keys() 
-                                    if 'afternoon' in self.scheduler.schedule[person_id].get(date, []))
-                max_allowed = self.scheduler.settings['max_afternoon_staff']
-                if afternoon_staff > max_allowed:
-                    afternoon_violations.append(f"{date}: {afternoon_staff} staff (max {max_allowed})")
+        passed = sum(1 for result in results.values() if result.passed)
+        total = len(results)
         
-        if afternoon_violations:
-            self.logger.log('constraint_verification', 'info', "❌ FAIL")
-            for violation in afternoon_violations:
-                self.logger.log('constraint_verification', 'debug', f"   {violation}")
-            return {'max_afternoon_staff': 'FAIL'}
+        if self.scheduler._should_log('constraint_verification', 'info'):
+            for i, (constraint_id, result) in enumerate(results.items(), 1):
+                status_symbol = "✅" if result.passed else "❌"
+                constraint_name = self.rules_engine.constraints[constraint_id].name
+                print(f"{i:2}. {constraint_name:<30} {status_symbol} {'PASS' if result.passed else 'FAIL'}")
+        
+        self.logger.log('constraint_verification', 'info', f"\nOVERALL: {passed}/{total} constraints passed")
+        
+        if self.scheduler.warnings:
+            self.logger.log('constraint_verification', 'info', f"⚠️  {len(self.scheduler.warnings)} SCHEDULING WARNINGS")
+        
+        if passed == total and not self.scheduler.warnings:
+            self.logger.log('constraint_verification', 'info', "🎉 ALL CONSTRAINTS SATISFIED WITH NO WARNINGS!")
+        elif passed == total:
+            self.logger.log('constraint_verification', 'info', "✅ ALL CONSTRAINTS SATISFIED (with warnings)")
         else:
-            self.logger.log('constraint_verification', 'info', "✅ PASS")
-            return {'max_afternoon_staff': 'PASS'}
+            self.logger.log('constraint_verification', 'info', f"⚠️  {total - passed} CONSTRAINT(S) VIOLATED")
+        
+        self.logger.log('constraint_verification', 'info', "="*80)
     
     def _check_sunday_mp_staff(self, all_dates):
         """Check Sunday MP staff"""
