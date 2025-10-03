@@ -77,6 +77,25 @@ class DataLoader:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
             return []
     
+    def load_festivity_dates(self, file_path: str, log_level: str = 'info') -> List[datetime.date]:
+        """Load festivity dates from file (supports CSV, XLS, XLSX)"""
+        if not os.path.exists(file_path):
+            self._log('info', f"Festivity file not found: {file_path} - no festivity days will be scheduled")
+            return []
+        
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == '.csv':
+            return self._load_festivities_from_csv(file_path, log_level)
+        elif file_ext in ['.xls', '.xlsx']:
+            if not self.pandas_available or not self.excel_available:
+                self._log('error', f"Excel support not available. Install pandas and openpyxl/xlrd to read {file_ext} files")
+                return []
+            return self._load_festivities_from_excel(file_path, log_level)
+        else:
+            self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
+            return []
+    
     def _load_people_from_csv(self, csv_file: str, log_level: str) -> Dict[str, Any]:
         """Load person data from CSV file"""
         people_data = {}
@@ -156,6 +175,24 @@ class DataLoader:
             if notti_col in row and str(row[notti_col]).strip().upper() == 'N':
                 night_available = False
             
+            # Parse night priority
+            night_priority = 0  # Default priority
+            night_priority_col = 'Priorita notti'
+            if night_priority_col in row and row[night_priority_col]:
+                try:
+                    night_priority = int(str(row[night_priority_col]).strip())
+                except (ValueError, TypeError):
+                    night_priority = 0
+            
+            # Parse weekend priority  
+            weekend_priority = 0  # Default priority
+            weekend_priority_col = 'Priorita weekend'
+            if weekend_priority_col in row and row[weekend_priority_col]:
+                try:
+                    weekend_priority = int(str(row[weekend_priority_col]).strip())
+                except (ValueError, TypeError):
+                    weekend_priority = 0
+            
             # Parse forbidden shifts
             forbidden_shifts = []
             for i in range(1, 7):
@@ -185,11 +222,13 @@ class DataLoader:
             person_data = {
                 'forbidden_shifts': forbidden_shifts,
                 'forbidden_weekends': forbidden_weekends,
-                'night_available': night_available
+                'night_available': night_available,
+                'night_priority': night_priority,
+                'weekend_priority': weekend_priority
             }
             
             if log_level in ['info', 'debug']:
-                self._log('info', f"Person {person_id}: Night shifts available = {night_available}")
+                self._log('info', f"Person {person_id}: Night shifts available = {night_available}, Night priority = {night_priority}, Weekend priority = {weekend_priority}")
             
             return {'id': person_id, 'data': person_data}
             
@@ -266,6 +305,75 @@ class DataLoader:
             self._log('error', f"Error reading Excel file {excel_file}: {e}")
             return []
     
+    def _load_festivities_from_csv(self, csv_file: str, log_level: str) -> List[datetime.date]:
+        """Load festivity dates from CSV file"""
+        festivity_dates = []
+        
+        # Try different encodings
+        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
+        
+        for encoding in encodings:
+            try:
+                with open(csv_file, 'r', encoding=encoding) as file:
+                    content = file.read()
+                    lines = content.strip().split('\n')
+                    
+                    if log_level in ['info', 'debug']:
+                        self._log('info', f"Reading festivity dates from {csv_file}...")
+                    
+                    for line in lines:
+                        date_str = line.strip()
+                        # Skip header line or empty lines
+                        if date_str and not ('festiv' in date_str.lower() or 'holiday' in date_str.lower()):
+                            parsed_date = self._parse_date(date_str)
+                            if parsed_date:
+                                festivity_dates.append(parsed_date)
+                                if log_level in ['debug']:
+                                    self._log('debug', f"  Festivity date: {parsed_date}")
+                
+                break  # Successfully read with this encoding
+                
+            except (UnicodeDecodeError, FileNotFoundError) as e:
+                if encoding == encodings[-1]:  # Last encoding tried
+                    self._log('error', f"Could not read {csv_file}: {e}")
+                continue
+        
+        return festivity_dates
+    
+    def _load_festivities_from_excel(self, excel_file: str, log_level: str) -> List[datetime.date]:
+        """Load festivity dates from Excel file"""
+        try:
+            df = self.pd.read_excel(excel_file, engine='openpyxl' if excel_file.endswith('.xlsx') else None, header=None)
+            
+            if log_level in ['info', 'debug']:
+                self._log('info', f"Reading festivity dates from {excel_file}...")
+            
+            festivity_dates = []
+            
+            for _, row in df.iterrows():
+                for cell_value in row:
+                    if cell_value and not self.pd.isna(cell_value):
+                        cell_str = str(cell_value).strip()
+                        # Skip header-like content
+                        if cell_str and not ('festiv' in cell_str.lower() or 'holiday' in cell_str.lower()):
+                            # Handle Excel date objects
+                            if isinstance(cell_value, datetime):
+                                festivity_dates.append(cell_value.date())
+                                if log_level in ['debug']:
+                                    self._log('debug', f"  Festivity date: {cell_value.date()}")
+                            else:
+                                parsed_date = self._parse_date(cell_str)
+                                if parsed_date:
+                                    festivity_dates.append(parsed_date)
+                                    if log_level in ['debug']:
+                                        self._log('debug', f"  Festivity date: {parsed_date}")
+            
+            return festivity_dates
+            
+        except Exception as e:
+            self._log('error', f"Error reading Excel file {excel_file}: {e}")
+            return []
+    
     def _parse_shift(self, shift_str: str) -> Optional[Dict]:
         """Parse shift string like '03/10/2025 PN' into date and shift types"""
         try:
@@ -337,11 +445,13 @@ class DataLoader:
             people_data[str(i)] = {
                 'forbidden_shifts': [],
                 'forbidden_weekends': [],
-                'night_available': True
+                'night_available': True,
+                'night_priority': 0,
+                'weekend_priority': 0
             }
         return people_data
     
-    def validate_data(self, people_data: Dict, night_dates: List) -> Tuple[bool, List[str]]:
+    def validate_data(self, people_data: Dict, night_dates: List, festivity_dates: List = None) -> Tuple[bool, List[str]]:
         """Validate loaded data and return (is_valid, errors)"""
         errors = []
         
@@ -354,7 +464,7 @@ class DataLoader:
                     errors.append(f"Invalid data structure for person {person_id}")
                     continue
                 
-                required_keys = ['forbidden_shifts', 'forbidden_weekends', 'night_available']
+                required_keys = ['forbidden_shifts', 'forbidden_weekends', 'night_available', 'night_priority', 'weekend_priority']
                 for key in required_keys:
                     if key not in person_data:
                         errors.append(f"Missing '{key}' for person {person_id}")
@@ -367,6 +477,15 @@ class DataLoader:
                 if not isinstance(date_obj, date):
                     errors.append(f"Invalid date format at position {i}: {date_obj}")
         
+        # Validate festivity dates
+        if festivity_dates is not None:
+            if not isinstance(festivity_dates, list):
+                errors.append("Festivity dates must be a list")
+            else:
+                for i, date_obj in enumerate(festivity_dates):
+                    if not isinstance(date_obj, date):
+                        errors.append(f"Invalid festivity date format at position {i}: {date_obj}")
+        
         return len(errors) == 0, errors
     
     def get_supported_formats(self) -> List[str]:
@@ -378,8 +497,3 @@ class DataLoader:
     
     def check_dependencies(self) -> Dict[str, bool]:
         """Check availability of optional dependencies"""
-        return {
-            'pandas': self.pandas_available,
-            'excel_support': self.excel_available,
-            'csv_support': True  # Always available
-        }

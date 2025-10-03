@@ -21,15 +21,23 @@ class ExportManager:
         
         all_dates = sorted(list(all_dates))
         
-        # Create header: Date, Day, Morning Count, Afternoon Count, Night Count, Warnings, then person columns
+        # Create header: Date, Day, Festivity, Night_Coverage, Morning Count, Afternoon Count, Night Count, Warnings, then person columns
         people_ids = sorted(self.scheduler.people.keys())
-        header = ['Date', 'Day', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff', 'Warnings'] + people_ids
+        header = ['Date', 'Day', 'Festivity', 'Night_Coverage', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff', 'Warnings'] + people_ids
         
         rows = [header]
         
         # Add data for each date
         for date in all_dates:
             day_name = date.strftime('%A')
+            
+            # Check if this is a festivity day
+            is_festivity = date in self.scheduler.festivity_dates
+            festivity_marker = '*' if is_festivity else ''
+            
+            # Check if night coverage is required on this date
+            is_night_required = date in self.scheduler.required_night_dates
+            night_coverage_marker = '*' if is_night_required else ''
             
             # Count staff for each shift type on this date
             morning_count = 0
@@ -66,10 +74,12 @@ class ExportManager:
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%d/%m/%Y') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
             
-            # Create row: Date, Day, Staff counts, Warnings, then person shifts
+            # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, Warnings, then person shifts
             row = [
                 date.strftime('%d/%m/%Y'),
                 day_name,
+                festivity_marker,
+                night_coverage_marker,
                 morning_count,
                 afternoon_count, 
                 night_count,

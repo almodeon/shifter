@@ -2,16 +2,15 @@ from datetime import timedelta
 from constraint_rules_engine import ConstraintRulesEngine
 
 class ConstraintVerifier:
+    """Verifies schedule constraints and provides detailed feedback"""
+    
     def __init__(self, scheduler):
         """Initialize with reference to main scheduler for accessing settings, people, schedule, etc."""
         self.scheduler = scheduler
         self.logger = scheduler.logger
         
-        # Initialize the constraint rules engine
-        self.rules_engine = ConstraintRulesEngine(scheduler, scheduler.logger)
-        
-        # Update constraint settings based on scheduler settings
-        self.rules_engine.update_constraint_settings(scheduler.settings)
+        # Initialize the constraint rules engine with settings
+        self.rules_engine = ConstraintRulesEngine(scheduler, scheduler.logger, scheduler.settings)
         
         # Initialize last_report for storing the most recent report
         self.last_report = None
@@ -528,4 +527,5 @@ class ConstraintVerifier:
         else:
             self.logger.log('constraint_verification', 'info', f"⚠️  {total - passed} CONSTRAINT(S) VIOLATED")
         
+        self.logger.log('constraint_verification', 'info', "="*80)
         self.logger.log('constraint_verification', 'info', "="*80)

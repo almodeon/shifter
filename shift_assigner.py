@@ -31,8 +31,13 @@ class ShiftAssigner:
         # Second pass: assign morning and afternoon shifts
         for date in dates:
             is_weekend = date.weekday() >= 5  # Saturday = 5, Sunday = 6
+            is_festivity = date in self.scheduler.festivity_dates
             
-            if is_weekend:
+            if is_festivity:
+                # Festivity days have only MP shift - skip all other shift types
+                shifts_needed = ['mp']
+                self.logger.log('shift_assignment_warnings', 'info', f"Festivity day {date}: scheduling MP shift only")
+            elif is_weekend:
                 if date.weekday() == 6:  # Sunday
                     # Sunday has only MP (morning+afternoon combined) shift
                     shifts_needed = ['mp']  # Special MP shift for Sunday
@@ -45,6 +50,9 @@ class ShiftAssigner:
             
             for shift in shifts_needed:
                 if shift == 'morning':
+                    # Skip morning assignment if this is a festivity day
+                    if is_festivity:
+                        continue
                     if date.weekday() == 5:  # Saturday
                         required_people = self.scheduler.settings.get('saturday_morning_staff', 2)
                     elif date.weekday() == 6:  # Sunday - no separate morning
@@ -52,14 +60,20 @@ class ShiftAssigner:
                     else:  # Weekday
                         required_people = self.scheduler.settings['min_morning_staff']
                 elif shift == 'afternoon':
+                    # Skip afternoon assignment if this is a festivity day
+                    if is_festivity:
+                        continue
                     if date.weekday() == 5:  # Saturday
                         required_people = self.scheduler.settings.get('saturday_afternoon_staff', 1)
                     elif date.weekday() == 6:  # Sunday - no separate afternoon
                         continue
                     else:  # Weekday
                         required_people = self.scheduler.settings['max_afternoon_staff']
-                elif shift == 'mp':  # Sunday MP shift
-                    required_people = self.scheduler.settings.get('sunday_staff', 1)
+                elif shift == 'mp':  # Sunday MP shift or festivity MP shift
+                    if is_festivity:
+                        required_people = self.scheduler.settings.get('festivity_staff', 1)
+                    else:  # Sunday
+                        required_people = self.scheduler.settings.get('sunday_staff', 1)
                 
                 assigned_count = 0
                 
@@ -198,6 +212,10 @@ class ShiftAssigner:
 
     def can_add_extra_morning_shift(self, person_id, date):
         """Check if we can add an extra morning shift for this person on this date - returns (can_add, reason)"""
+        # Don't add extra shifts on festivity days
+        if date in self.scheduler.festivity_dates:
+            return False, "festivity day (only MP shifts allowed)"
+        
         # Check if this date is blocked for rest after night shift
         current_shifts = self.scheduler.schedule[person_id].get(date, [])
         if 'rest_after_night' in current_shifts:
@@ -296,7 +314,13 @@ class ShiftAssigner:
         
         # Assign one person per required night date
         shuffled_people = night_available_people.copy()  # Only use night-available people
-        random.shuffle(shuffled_people)
+        
+        # Sort by night priority if enabled (higher priority first)
+        if self.scheduler.settings['priority_assignment']['night_priority_enabled']:
+            shuffled_people.sort(key=lambda p: self.scheduler.people[p]['night_priority'], reverse=True)
+            self.logger.log('night_shift_assignment', 'debug', f"Sorted people by night priority: {[(p, self.scheduler.people[p]['night_priority']) for p in shuffled_people]}")
+        else:
+            random.shuffle(shuffled_people)
         
         person_index = 0
         for date in available_night_dates:
@@ -512,6 +536,19 @@ class ShiftAssigner:
                     # Add penalty tier for people with afternoon shifts this week
                     if afternoon_shifts_this_week > 0:
                         base_priority = (base_priority[0] + 1, afternoon_shifts_this_week, base_priority[1])
+            
+            # NEW: Add priority from CSV data
+            priority_bonus = 0
+            if shift == 'night' and self.scheduler.settings['priority_assignment']['night_priority_enabled']:
+                night_priority = self.scheduler.people[person_id].get('night_priority', 0)
+                priority_bonus = -night_priority * self.scheduler.settings['priority_assignment']['priority_weight']
+            elif is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
+                weekend_priority = self.scheduler.people[person_id].get('weekend_priority', 0)
+                priority_bonus = -weekend_priority * self.scheduler.settings['priority_assignment']['priority_weight']
+            
+            # Apply priority bonus (negative because we use min() - lower is better)
+            if priority_bonus != 0:
+                base_priority = (base_priority[0], base_priority[1] + priority_bonus)
             
             # NEW: Option 5 - Add randomization to tie-breaking
             if self.scheduler.settings.get('randomize_priority_tiebreaking', False):

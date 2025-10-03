@@ -23,6 +23,7 @@ class ConfigManager:
             'saturday_morning_staff': 0,
             'saturday_afternoon_staff': 0,
             'sunday_staff': 1,
+            'festivity_staff': 1,  # Staff required for festivity days (MP shift)
             
             # Working hours constraints
             'min_weekly_hours': 34,
@@ -47,6 +48,13 @@ class ConfigManager:
             # Bias mitigation settings
             'randomize_people_order': False,  # Randomize people order at start of scheduling
             'randomize_priority_tiebreaking': False,  # Add randomization to priority scoring
+            
+            # Priority assignment settings
+            'priority_assignment': {
+                'night_priority_enabled': True,    # Use night priority from CSV data
+                'weekend_priority_enabled': True,  # Use weekend priority from CSV data
+                'priority_weight': 1.0             # Weight factor for priority in scoring
+            },
             
             # Workload balancing settings
             'workload_balancing': {
@@ -179,6 +187,12 @@ class ConfigManager:
             max_runs = multi_run.get('max_runs', 0)
             if not isinstance(max_runs, int) or max_runs < 1 or max_runs > 1000:
                 errors.append("multi_run.max_runs must be an integer between 1 and 1000")
+        
+        # Validate priority assignment settings
+        priority_settings = self.get('priority_assignment', {})
+        priority_weight = priority_settings.get('priority_weight', 1.0)
+        if not isinstance(priority_weight, (int, float)) or priority_weight < 0:
+            errors.append("priority_assignment.priority_weight must be a non-negative number")
         
         return len(errors) == 0, errors
     
@@ -325,6 +339,7 @@ class ConfigManager:
         print(f"  Afternoon (max): {self.get('max_afternoon_staff')}")
         print(f"  Night: {self.get('night_staff')}")
         print(f"  Sunday MP: {self.get('sunday_staff')}")
+        print(f"  Festivity MP: {self.get('festivity_staff')}")
         
         print(f"\nWorking Hours:")
         print(f"  Weekly range: {self.get('min_weekly_hours')}-{self.get('max_weekly_hours')}h")
@@ -339,6 +354,8 @@ class ConfigManager:
         print(f"  Workload balancing: {'ENABLED' if self.get('workload_balancing.enabled') else 'DISABLED'}")
         print(f"  Multi-run optimization: {'ENABLED' if self.get('multi_run.enabled') else 'DISABLED'}")
         print(f"  Fill minimum hours: {'YES' if self.get('fill_up_to_minimum_hours') else 'NO'}")
+        print(f"  Night priority: {'ENABLED' if self.get('priority_assignment.night_priority_enabled') else 'DISABLED'}")
+        print(f"  Weekend priority: {'ENABLED' if self.get('priority_assignment.weekend_priority_enabled') else 'DISABLED'}")
         
         # Show validation status
         is_valid, errors = self.validate_settings()

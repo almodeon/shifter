@@ -261,12 +261,56 @@ class CustomConstraint(BaseConstraint):
         except Exception as e:
             return ConstraintResult(self.constraint_id, False, self.severity, f"Error: {e}", [str(e)])
 
+class FestivityConstraint(BaseConstraint):
+    """Constraint for festivity day MP shift coverage"""
+    
+    def __init__(self, constraint_id: str, severity: ConstraintSeverity = ConstraintSeverity.CRITICAL):
+        name = "Festivity Coverage"
+        description = "Ensure festivity days are covered with exactly one MP shift"
+        super().__init__(constraint_id, name, description, severity)
+    
+    def evaluate(self, scheduler, start_date: date, end_date: date) -> ConstraintResult:
+        violations = []
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        
+        # Check festivity dates within the scheduling period
+        festivity_dates_in_period = [d for d in scheduler.festivity_dates if d in all_dates]
+        
+        for festivity_date in festivity_dates_in_period:
+            # Count MP staff on this festivity
+            mp_staff = 0
+            other_shifts = []
+            
+            for person_id in scheduler.people.keys():
+                shifts = scheduler.schedule[person_id].get(festivity_date, [])
+                if 'mp' in shifts:
+                    mp_staff += 1
+                # Check for non-MP shifts (should not exist on festivities)
+                non_mp_shifts = [s for s in shifts if s not in ['mp', 'rest_after_night']]
+                if non_mp_shifts:
+                    other_shifts.extend([(person_id, s) for s in non_mp_shifts])
+            
+            required_mp = scheduler.settings.get('festivity_staff', 1)
+            
+            if mp_staff != required_mp:
+                violations.append(f"Festivity {festivity_date}: {mp_staff} MP staff (need exactly {required_mp})")
+            
+            if other_shifts:
+                for person_id, shift in other_shifts:
+                    violations.append(f"Festivity {festivity_date}: Person {person_id} has non-MP shift '{shift}' (only MP allowed)")
+        
+        passed = len(violations) == 0
+        message = f"Checked {len(festivity_dates_in_period)} festivity days"
+        
+        return ConstraintResult(self.constraint_id, passed, self.severity, message, violations)
+
 class ConstraintRulesEngine:
     """Main constraint rules engine that manages and evaluates all constraints"""
     
-    def __init__(self, scheduler=None, logger=None):
+    def __init__(self, scheduler=None, logger=None, settings=None):
         self.scheduler = scheduler
         self.logger = logger
+        self.settings = settings or {}
         self.constraints: Dict[str, BaseConstraint] = {}
         self.constraint_groups: Dict[str, List[str]] = {}
         
@@ -282,12 +326,14 @@ class ConstraintRulesEngine:
         """Initialize standard hospital scheduling constraints"""
         # Staffing constraints
         self.add_constraint(StaffingConstraint(
-            "weekday_morning_staff", "morning", 3, None,
+            "weekday_morning_staff", "morning", 
+            self.settings.get('min_morning_staff', 3), None,
             lambda d: d.weekday() < 5, ConstraintSeverity.CRITICAL
         ))
         
+        max_afternoon = self.settings.get('max_afternoon_staff', 1)
         self.add_constraint(StaffingConstraint(
-            "weekday_afternoon_staff", "afternoon", 1, 1,
+            "weekday_afternoon_staff", "afternoon", max_afternoon, max_afternoon,
             lambda d: d.weekday() < 5, ConstraintSeverity.CRITICAL
         ))
         
@@ -303,21 +349,31 @@ class ConstraintRulesEngine:
         
         # Personal constraints
         self.add_constraint(PersonalConstraint(
-            "monthly_night_limits", "night_shifts", 1, "month", ConstraintSeverity.HIGH
+            "monthly_night_limits", "night_shifts", 
+            self.settings.get('night_shifts_per_month', 1), "month", ConstraintSeverity.HIGH
         ))
         
         self.add_constraint(PersonalConstraint(
-            "monthly_weekend_limits", "weekend_days", 2, "month", ConstraintSeverity.HIGH
+            "monthly_weekend_limits", "weekend_days", 
+            self.settings.get('max_weekend_days_per_month', 2), "month", ConstraintSeverity.HIGH
         ))
         
         # Work hours constraint
         self.add_constraint(WorkHoursConstraint(
-            "weekly_hours", 34, 48, "week", ConstraintSeverity.CRITICAL
+            "weekly_hours", 
+            self.settings.get('min_weekly_hours', 34), 
+            self.settings.get('max_weekly_hours', 48), 
+            "week", ConstraintSeverity.CRITICAL
         ))
         
         # Forbidden shifts constraint
         self.add_constraint(ForbiddenShiftsConstraint(
             "forbidden_shifts", ConstraintSeverity.CRITICAL
+        ))
+        
+        # Festivity constraint
+        self.add_constraint(FestivityConstraint(
+            "festivity_coverage", ConstraintSeverity.CRITICAL
         ))
         
         # Define constraint groups
@@ -326,6 +382,7 @@ class ConstraintRulesEngine:
             "personal_limits": ["monthly_night_limits", "monthly_weekend_limits"],
             "work_hours": ["weekly_hours"],
             "forbidden": ["forbidden_shifts"],
+            "festivity": ["festivity_coverage"],
             "critical": [c_id for c_id, c in self.constraints.items() if c.severity == ConstraintSeverity.CRITICAL],
             "all": list(self.constraints.keys())
         }
@@ -414,29 +471,6 @@ class ConstraintRulesEngine:
         """Get all constraint groups"""
         return self.constraint_groups.copy()
     
-    def update_constraint_settings(self, settings: Dict[str, Any]):
-        """Update constraint parameters from scheduler settings"""
-        # Update staffing constraints based on settings
-        if "weekday_morning_staff" in self.constraints:
-            self.constraints["weekday_morning_staff"].min_staff = settings.get('min_morning_staff', 3)
-        
-        if "weekday_afternoon_staff" in self.constraints:
-            max_afternoon = settings.get('max_afternoon_staff', 1)
-            self.constraints["weekday_afternoon_staff"].min_staff = max_afternoon
-            self.constraints["weekday_afternoon_staff"].max_staff = max_afternoon
-        
-        # Update personal limits
-        if "monthly_night_limits" in self.constraints:
-            self.constraints["monthly_night_limits"].limit = settings.get('night_shifts_per_month', 1)
-        
-        if "monthly_weekend_limits" in self.constraints:
-            self.constraints["monthly_weekend_limits"].limit = settings.get('max_weekend_days_per_month', 2)
-        
-        # Update work hours
-        if "weekly_hours" in self.constraints:
-            self.constraints["weekly_hours"].min_hours = settings.get('min_weekly_hours', 34)
-            self.constraints["weekly_hours"].max_hours = settings.get('max_weekly_hours', 48)
-    
     def generate_constraint_report(self, results: Dict[str, ConstraintResult]) -> Dict[str, Any]:
         """Generate a comprehensive constraint evaluation report"""
         total_constraints = len(results)
@@ -455,6 +489,21 @@ class ConstraintRulesEngine:
         
         # Collect all violations
         all_violations = []
+        for result in results.values():
+            if not result.passed:
+                all_violations.extend(result.violations)
+        
+        return {
+            'summary': {
+                'total_constraints': total_constraints,
+                'passed': passed_constraints,
+                'failed': failed_constraints,
+                'pass_rate': (passed_constraints / total_constraints * 100) if total_constraints > 0 else 0
+            },
+            'by_severity': severity_summary,
+            'violations': all_violations,
+            'constraint_details': {c_id: {'passed': r.passed, 'message': r.message} for c_id, r in results.items()}
+        }
         for result in results.values():
             if not result.passed:
                 all_violations.extend(result.violations)
