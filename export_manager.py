@@ -8,7 +8,7 @@ class ExportManager:
         self.scheduler = scheduler
         self.logger = scheduler.logger
     
-    def export_schedule_to_csv(self, output_file):
+    def export_schedule_to_csv(self, output_file, start_date=None, end_date=None):
         """Export schedule to CSV file (transposed format) with warnings column"""
         # Ensure the output file is in the output directory
         output_file = os.path.join(self.scheduler.output_dir, os.path.basename(output_file))
@@ -39,6 +39,9 @@ class ExportManager:
             is_night_required = date in self.scheduler.required_night_dates
             night_coverage_marker = '*' if is_night_required else ''
             
+            # Check if this is a weekend or holiday
+            is_weekend_or_holiday = date.weekday() >= 5 or is_festivity
+            
             # Count staff for each shift type on this date
             morning_count = 0
             afternoon_count = 0
@@ -50,25 +53,35 @@ class ExportManager:
             for person_id in people_ids:
                 shifts = self.scheduler.schedule[person_id].get(date, [])
                 
-                # Convert shifts to M, P, N, MP format
-                shift_codes = []
-                for shift in shifts:
-                    if shift == 'morning':
-                        shift_codes.append('M')
-                        morning_count += 1
-                    elif shift == 'afternoon':
-                        shift_codes.append('P')
-                        afternoon_count += 1
-                    elif shift == 'mp':
-                        shift_codes.append('MP')
-                        morning_count += 1  # MP counts as both morning and afternoon staff
-                        afternoon_count += 1
-                    elif shift == 'night':
-                        shift_codes.append('N')
-                        night_count += 1
+                # Check if this person is on vacation on this date
+                is_on_vacation = self._is_person_on_vacation(person_id, date)
                 
-                shift_str = "".join(shift_codes) if shift_codes else ""
-                person_data.append(shift_str)
+                if is_on_vacation:
+                    # Person is on vacation - show F or (F)
+                    if is_weekend_or_holiday:
+                        person_data.append("(F)")
+                    else:
+                        person_data.append("F")
+                else:
+                    # Convert shifts to M, P, N, MP format
+                    shift_codes = []
+                    for shift in shifts:
+                        if shift == 'morning':
+                            shift_codes.append('M')
+                            morning_count += 1
+                        elif shift == 'afternoon':
+                            shift_codes.append('P')
+                            afternoon_count += 1
+                        elif shift == 'mp':
+                            shift_codes.append('MP')
+                            morning_count += 1  # MP counts as both morning and afternoon staff
+                            afternoon_count += 1
+                        elif shift == 'night':
+                            shift_codes.append('N')
+                            night_count += 1
+                    
+                    shift_str = "".join(shift_codes) if shift_codes else ""
+                    person_data.append(shift_str)
             
             # Find warnings for this date
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%d/%m/%Y') in w]
@@ -92,8 +105,123 @@ class ExportManager:
         with open(output_file, 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             writer.writerows(rows)
+            
+            # Optionally append staff statistics
+            if (self.scheduler.settings.get('append_statistics_to_schedule', True) and 
+                start_date is not None and end_date is not None):
+                
+                # Add blank row
+                writer.writerow([])
+                
+                # Add statistics header in column H (index 7)
+                writer.writerow(['', '', '', '', '', '', '', 'STAFF STATISTICS'])
+                writer.writerow([])
+                
+                # Get staff statistics data
+                staff_data = self._get_staff_statistics_data(start_date, end_date)
+                
+                # Create statistics rows with titles in column H (index 7)
+                # Columns: Date(0), Day(1), Festivity(2), Night_Coverage(3), Morning_Staff(4), Afternoon_Staff(5), Night_Staff(6), Warnings(7), then people(8+)
+                stats_rows = [
+                    ['', '', '', '', '', '', '', 'Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Vacation_Hours'] + [str(person_stats[2]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Morning_Shifts'] + [str(person_stats[3]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Afternoon_Shifts'] + [str(person_stats[4]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Night_Shifts'] + [str(person_stats[5]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Weekend_Days'] + [str(person_stats[6]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Avg_Hours_Per_Week'] + [str(person_stats[7]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Night_Priority'] + [str(person_stats[8]) for person_stats in staff_data],
+                    ['', '', '', '', '', '', '', 'Weekend_Priority'] + [str(person_stats[9]) for person_stats in staff_data]
+                ]
+                
+                # Write statistics rows
+                for stats_row in stats_rows:
+                    writer.writerow(stats_row)
         
         self.logger.log('export_notifications', 'info', f"Schedule exported to {output_file}")
+    
+    def _get_staff_statistics_data(self, start_date, end_date):
+        """Get staff statistics data for appending to schedule CSV"""
+        total_days = (end_date - start_date).days + 1
+        total_weeks = total_days / 7
+        all_dates = [start_date + timedelta(days=i) for i in range(total_days)]
+        
+        staff_data = []
+        
+        for person_id in sorted(self.scheduler.people.keys()):
+            # Count shifts from schedule
+            morning_count = 0
+            afternoon_count = 0
+            night_count = 0
+            mp_count = 0
+            weekend_days = 0
+            shift_hours = 0
+            
+            # Count shifts properly from the schedule
+            dates = sorted(self.scheduler.schedule[person_id].keys())
+            for date in dates:
+                shifts = self.scheduler.schedule[person_id][date]
+                is_weekend = date.weekday() >= 5
+                
+                # Count weekend days if they have non-night shifts
+                if shifts and is_weekend:
+                    non_night_shifts = [s for s in shifts if s not in ['night', 'rest_after_night']]
+                    if non_night_shifts:
+                        weekend_days += 1
+                
+                # Count each shift type and calculate hours from shifts
+                for shift in shifts:
+                    if shift == 'morning':
+                        morning_count += 1
+                        shift_hours += self.scheduler.settings['morning_shift_hours']
+                    elif shift == 'afternoon':
+                        afternoon_count += 1
+                        shift_hours += self.scheduler.settings['afternoon_shift_hours']
+                    elif shift == 'mp':
+                        mp_count += 1
+                        shift_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                    elif shift == 'night':
+                        night_count += 1
+                        shift_hours += self.scheduler.settings['night_shift_hours']
+            
+            # Calculate vacation hours (weekday vacation days count as morning shift hours)
+            vacation_hours = 0
+            person_data = self.scheduler.people[person_id]
+            for forbidden in person_data['forbidden_shifts']:
+                if forbidden and len(forbidden['shifts']) == 3:
+                    # This is a vacation day (all MPN shifts forbidden)
+                    vacation_date = forbidden['date']
+                    if vacation_date in all_dates and vacation_date.weekday() < 5:  # Monday-Friday only
+                        vacation_hours += self.scheduler.settings['morning_shift_hours']
+            
+            # Total hours including vacation
+            total_hours = shift_hours + vacation_hours
+            
+            # Average hours per week
+            avg_hours_per_week = total_hours / total_weeks if total_weeks > 0 else 0
+            
+            # Display M+MP and P+MP totals
+            total_morning_shifts = morning_count + mp_count
+            total_afternoon_shifts = afternoon_count + mp_count
+            
+            # Get priorities
+            night_priority = person_data.get('night_priority', 0)
+            weekend_priority = person_data.get('weekend_priority', 0)
+            
+            staff_data.append([
+                person_id,
+                total_hours,
+                vacation_hours,
+                total_morning_shifts,
+                total_afternoon_shifts,
+                night_count,
+                weekend_days,
+                f"{avg_hours_per_week:.1f}",
+                night_priority,
+                weekend_priority
+            ])
+        
+        return staff_data
     
     def export_staff_statistics_to_csv(self, start_date, end_date, output_file='staff_statistics.csv'):
         """Export detailed staff statistics to CSV file"""
@@ -369,3 +497,16 @@ class ExportManager:
             )
         
         self.logger.log('export_notifications', 'info', "All exports completed successfully!")
+        self.logger.log('export_notifications', 'info', "All exports completed successfully!")
+    
+    def _is_person_on_vacation(self, person_id: str, date) -> bool:
+        """Check if a person is on vacation on a specific date"""
+        person_data = self.scheduler.people[person_id]
+        
+        for forbidden in person_data.get('forbidden_shifts', []):
+            if forbidden and forbidden['date'] == date:
+                # Check if this is a vacation day (all MPN shifts forbidden)
+                if len(forbidden['shifts']) == 3 and all(s in forbidden['shifts'] for s in ['morning', 'afternoon', 'night']):
+                    return True
+        
+        return False

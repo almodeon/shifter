@@ -421,9 +421,9 @@ class HospitalScheduler:
             print(f"  Shift distribution - M:{counts['morning']}, P:{counts['afternoon']}, N:{counts['night']}, Weekends:{counts['weekend_days']}")
             print()
 
-    def export_to_csv(self, output_file):
+    def export_to_csv(self, output_file, start_date=None, end_date=None):
         """Export schedule to CSV file - delegates to ExportManager"""
-        self.export_manager.export_schedule_to_csv(output_file)
+        self.export_manager.export_schedule_to_csv(output_file, start_date, end_date)
 
     def export_staff_statistics_to_csv(self, start_date, end_date, output_file='staff_statistics.csv'):
         """Export detailed staff statistics to CSV file - delegates to ExportManager"""
@@ -762,7 +762,7 @@ def main():
     scheduler.print_summary(start_date, end_date)
     
     # Export results
-    scheduler.export_to_csv('schedule_output.csv')
+    scheduler.export_to_csv('schedule_output.csv', start_date, end_date)
     scheduler.export_staff_statistics_to_csv(start_date, end_date, 'staff_statistics.csv')
     
     # Save configuration for next time (optional)

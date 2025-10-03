@@ -44,6 +44,7 @@ class ConfigManager:
             'weekend_morning_plus_afternoon': True,  # Saturday can have morning+afternoon
             'night_shifts_only_weekdays': False,
             'fill_up_to_minimum_hours': False,  # Add extra shifts to reach minimum hours
+            'append_statistics_to_schedule': True,  # Append staff statistics to schedule CSV output
             
             # Bias mitigation settings
             'randomize_people_order': False,  # Randomize people order at start of scheduling
@@ -356,6 +357,7 @@ class ConfigManager:
         print(f"  Fill minimum hours: {'YES' if self.get('fill_up_to_minimum_hours') else 'NO'}")
         print(f"  Night priority: {'ENABLED' if self.get('priority_assignment.night_priority_enabled') else 'DISABLED'}")
         print(f"  Weekend priority: {'ENABLED' if self.get('priority_assignment.weekend_priority_enabled') else 'DISABLED'}")
+        print(f"  Append statistics to CSV: {'YES' if self.get('append_statistics_to_schedule') else 'NO'}")
         
         # Show validation status
         is_valid, errors = self.validate_settings()
