@@ -719,8 +719,8 @@ def main():
         'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
         
         # Bias mitigation settings
-        'randomize_people_order': False,  # Randomize people order at start of scheduling
-        'randomize_priority_tiebreaking': False,  # Add randomization to priority scoring
+        'randomize_people_order': True,  # Randomize people order at start of scheduling
+        'randomize_priority_tiebreaking': True,  # Add randomization to priority scoring
         
         # Priority assignment settings
         'priority_assignment': {
@@ -746,7 +746,7 @@ def main():
             'enable_randomization_for_multi_run': True,  # Enable randomization during multi-run
             'silence_output': True,    # Silence all output during multi-run execution (except final results)
             'show_progress_bar': True, # Show progress bar during multi-run execution
-            'enforce_desiderata': False  # Only consider runs that comply with forbidden shifts and vacation constraints
+            'enforce_desiderata': True  # Only consider runs that comply with forbidden shifts and vacation constraints
         },
         
         # Afternoon shift balancing
@@ -760,7 +760,7 @@ def main():
         # Logging/Output verbosity settings
         'logging': {
             'data_loading': 'error',              # silence, error, info, debug
-            'settings_display': 'info',          # silence, error, info, debug  
+            'settings_display': 'error',          # silence, error, info, debug  
             'multi_run_optimization': 'error',    # silence, error, info, debug
             'night_shift_assignment': 'error',    # silence, error, info, debug
             'workload_balancing': 'error',       # silence, error, info, debug
