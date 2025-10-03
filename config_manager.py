@@ -70,8 +70,11 @@ class ConfigManager:
             'multi_run': {
                 'enabled': False,           # Enable multi-run optimization
                 'max_runs': 100,           # Maximum number of runs to attempt
-                'target_passes': 16,      # Stop early if this many constraints pass (max possible)
-                'enable_randomization_for_multi_run': True  # Enable randomization during multi-run
+                'target_fails': 0,         # Stop early if this many or fewer constraints fail (0 = perfect solution)
+                'enable_randomization_for_multi_run': True,  # Enable randomization during multi-run
+                'silence_output': True,    # Silence all output during multi-run execution (except final results)
+                'show_progress_bar': True, # Show progress bar during multi-run execution
+                'enforce_desiderata': True  # Only consider runs that comply with forbidden shifts and vacation constraints
             },
             
             # Afternoon shift balancing
@@ -186,8 +189,8 @@ class ConfigManager:
         multi_run = self.get('multi_run', {})
         if multi_run.get('enabled', False):
             max_runs = multi_run.get('max_runs', 0)
-            if not isinstance(max_runs, int) or max_runs < 1 or max_runs > 1000:
-                errors.append("multi_run.max_runs must be an integer between 1 and 1000")
+            if not isinstance(max_runs, int) or max_runs < 1 or max_runs > 100000:
+                errors.append("multi_run.max_runs must be an integer between 1 and 100000")
         
         # Validate priority assignment settings
         priority_settings = self.get('priority_assignment', {})
@@ -307,7 +310,7 @@ class ConfigManager:
                 'multi_run': {
                     'enabled': True,
                     'max_runs': 50,
-                    'target_passes': 16,
+                    'target_fails': 0,
                     'enable_randomization_for_multi_run': True
                 },
                 'logging': {k: 'info' if k in ['multi_run_optimization', 'summary_statistics', 'export_notifications'] else 'error' 

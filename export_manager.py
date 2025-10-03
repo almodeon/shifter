@@ -326,16 +326,32 @@ class ExportManager:
         """Export multi-run ranking to CSV"""
         ranking_file = os.path.join(self.scheduler.output_dir, 'multi_run_ranking.csv')
         
-        # Define constraint order for CSV export
-        constraint_order = [
-            'forbidden_shifts', 'max_afternoon_staff', 'max_consecutive_days', 'monthly_night_limits',
-            'morning_staff_weekdays', 'night_availability', 'night_coverage', 'night_rest_periods',
-            'saturday_morning_staff', 'sunday_mp_staff', 'vacation_compliance', 'weekday_afternoon_coverage',
-            'weekday_morning_coverage', 'weekend_coverage', 'weekend_days_per_month', 'weekly_hours'
-        ]
+        # Get actual constraint names from the first run's results
+        if sorted_runs and sorted_runs[0]['constraint_results']:
+            actual_constraints = list(sorted_runs[0]['constraint_results'].keys())
+        else:
+            # Fallback to expected constraint names if no runs available
+            actual_constraints = [
+                'weekday_morning_staff', 'weekday_afternoon_staff', 'saturday_morning_staff', 
+                'sunday_mp_staff', 'monthly_night_limits', 'monthly_weekend_limits',
+                'weekly_hours', 'forbidden_shifts', 'festivity_coverage'
+            ]
         
-        # Constraint name mapping for CSV headers
+        # Get all person IDs for creating person-specific columns
+        people_ids = sorted(self.scheduler.people.keys()) if self.scheduler.people else []
+        
+        # Constraint name mapping for CSV headers (shortened for better display)
         constraint_short_names = {
+            'weekday_morning_staff': 'WD_Morn',
+            'weekday_afternoon_staff': 'WD_Aftn',
+            'saturday_morning_staff': 'Sat_Morn',
+            'sunday_mp_staff': 'Sun_MP',
+            'monthly_night_limits': 'Month_Night',
+            'monthly_weekend_limits': 'Month_Wknd',
+            'weekly_hours': 'Week_Hrs',
+            'forbidden_shifts': 'Forbidden',
+            'festivity_coverage': 'Festivity',
+            # Legacy names (in case old constraint names are still used)
             'forbidden_shifts': 'ForbShifts',
             'max_afternoon_staff': 'MaxAftnPers',
             'max_consecutive_days': 'ConsecDays',
@@ -358,11 +374,25 @@ class ExportManager:
         with open(ranking_file, 'w', newline='', encoding='utf-8') as file:
             writer = csv.writer(file)
             
-            # CSV Header
+            # CSV Header - Base columns + Constraint columns + Person statistics columns
             header = ['Rank', 'Run_ID', 'Passed_Constraints', 'Total_Constraints', 'Warnings', 'Hour_Difference']
-            for constraint in constraint_order:
+            
+            # Add constraint columns
+            for constraint in actual_constraints:
                 short_name = constraint_short_names.get(constraint, constraint[:9])
                 header.append(short_name)
+            
+            # Add person-specific statistics columns
+            for person_id in people_ids:
+                header.extend([
+                    f'{person_id}_M',      # Morning shifts
+                    f'{person_id}_P',      # Afternoon shifts  
+                    f'{person_id}_N',      # Night shifts
+                    f'{person_id}_WKND',   # Weekend days
+                    f'{person_id}_totH',   # Total hours
+                    f'{person_id}_avgH'    # Average hours per week
+                ])
+            
             writer.writerow(header)
             
             # CSV Data rows
@@ -376,8 +406,8 @@ class ExportManager:
                     run['hour_difference']
                 ]
                 
-                # Add constraint results
-                for constraint in constraint_order:
+                # Add constraint results using actual constraint names
+                for constraint in actual_constraints:
                     status = run['constraint_results'].get(constraint, 'N/A')
                     # Use * for FAIL, empty for PASS, ? for N/A
                     if status == 'FAIL':
@@ -387,10 +417,72 @@ class ExportManager:
                     else:
                         row.append('?')
                 
+                # Add person-specific statistics
+                for person_id in people_ids:
+                    if 'shift_counts' in run and person_id in run['shift_counts']:
+                        shift_counts = run['shift_counts'][person_id]
+                        
+                        # Calculate person statistics for this run
+                        morning_shifts = shift_counts.get('morning', 0)
+                        afternoon_shifts = shift_counts.get('afternoon', 0)
+                        night_shifts = shift_counts.get('night', 0)
+                        weekend_days = shift_counts.get('weekend_days', 0)
+                        
+                        # Calculate total hours for this person in this run
+                        total_hours = self._calculate_person_hours_from_run(run, person_id)
+                        
+                        # Calculate average hours per week (assuming roughly 4.33 weeks per month)
+                        # This is an approximation - for exact calculation we'd need the actual date range
+                        avg_hours_per_week = total_hours / 4.33 if total_hours > 0 else 0
+                        
+                        row.extend([
+                            morning_shifts,
+                            afternoon_shifts,
+                            night_shifts,
+                            weekend_days,
+                            f'{total_hours:.0f}',
+                            f'{avg_hours_per_week:.1f}'
+                        ])
+                    else:
+                        # No data available for this person in this run
+                        row.extend(['', '', '', '', '', ''])
+                
                 writer.writerow(row)
         
         self.logger.log('export_notifications', 'info', f"Detailed ranking exported to: {ranking_file}")
     
+    def _calculate_person_hours_from_run(self, run, person_id):
+        """Calculate total hours for a person from a specific run's data"""
+        if 'schedule' not in run or person_id not in run['schedule']:
+            return 0
+        
+        total_hours = 0
+        person_schedule = run['schedule'][person_id]
+        
+        for date, shifts in person_schedule.items():
+            for shift in shifts:
+                if shift == 'morning':
+                    total_hours += self.scheduler.settings['morning_shift_hours']
+                elif shift == 'afternoon':
+                    total_hours += self.scheduler.settings['afternoon_shift_hours']
+                elif shift == 'mp':
+                    total_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                elif shift == 'night':
+                    total_hours += self.scheduler.settings['night_shift_hours']
+                # Don't count 'rest_after_night' as hours
+        
+        # Add vacation hours if applicable
+        if person_id in self.scheduler.people:
+            person_data = self.scheduler.people[person_id]
+            for forbidden in person_data.get('forbidden_shifts', []):
+                if forbidden and len(forbidden['shifts']) == 3:  # Vacation day
+                    vacation_date = forbidden['date']
+                    # Check if vacation date is in the schedule period
+                    if vacation_date in person_schedule and vacation_date.weekday() < 5:  # Weekday only
+                        total_hours += self.scheduler.settings['morning_shift_hours']
+        
+        return total_hours
+
     def export_constraint_summary(self, constraints_status, start_date, end_date, output_file='constraint_summary.csv'):
         """Export constraint verification results to CSV"""
         output_file = os.path.join(self.scheduler.output_dir, os.path.basename(output_file))

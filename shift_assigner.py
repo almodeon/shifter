@@ -28,6 +28,21 @@ class ShiftAssigner:
                 self.afternoon_targets[person_id] = self.calculate_adjusted_afternoon_target(person_id)
                 self.logger.log('workload_balancing', 'debug', f"Person {person_id} afternoon target: {self.afternoon_targets[person_id]:.1f}")
         
+        # Log weekend priority settings
+        if self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
+            self.logger.log('weekend_shift_balancing', 'info', "Weekend priority assignment: ENABLED (strict priority)")
+            weekend_priorities = {}
+            for person_id in people_list:
+                priority = self.scheduler.people[person_id].get('weekend_priority', 0)
+                if priority not in weekend_priorities:
+                    weekend_priorities[priority] = []
+                weekend_priorities[priority].append(person_id)
+            
+            for priority in sorted(weekend_priorities.keys(), reverse=True):
+                self.logger.log('weekend_shift_balancing', 'info', f"  Weekend priority {priority}: {weekend_priorities[priority]}")
+        else:
+            self.logger.log('weekend_shift_balancing', 'info', "Weekend priority assignment: DISABLED")
+        
         # Second pass: assign morning and afternoon shifts
         for date in dates:
             is_weekend = date.weekday() >= 5  # Saturday = 5, Sunday = 6
@@ -82,6 +97,11 @@ class ShiftAssigner:
                     best_person = self.find_best_person_for_shift(people_list, date, shift)
                     if best_person:
                         self.scheduler.schedule[best_person][date].append(shift)
+                        
+                        # Log weekend priority assignment
+                        if date.weekday() >= 5 and shift in ['morning', 'afternoon', 'mp']:
+                            weekend_priority = self.scheduler.people[best_person].get('weekend_priority', 0)
+                            self.logger.log('weekend_shift_balancing', 'debug', f"Assigned weekend {shift} to person {best_person} (priority {weekend_priority}) on {date}")
                         
                         # Update shift counts
                         if shift == 'mp':
@@ -303,6 +323,23 @@ class ShiftAssigner:
         
         self.logger.log('night_shift_assignment', 'info', f"People available for night shifts: {night_available_people}")
         
+        # Group people by night priority if enabled (STRICT PRIORITY)
+        if self.scheduler.settings['priority_assignment']['night_priority_enabled']:
+            priority_groups = {}
+            for person_id in night_available_people:
+                priority = self.scheduler.people[person_id].get('night_priority', 0)
+                if priority not in priority_groups:
+                    priority_groups[priority] = []
+                priority_groups[priority].append(person_id)
+            
+            # Sort priority levels (highest first)
+            sorted_priorities = sorted(priority_groups.keys(), reverse=True)
+            self.logger.log('night_shift_assignment', 'info', f"Night priority groups: {[(p, priority_groups[p]) for p in sorted_priorities]}")
+        else:
+            # No priority - treat everyone as same priority
+            priority_groups = {0: night_available_people}
+            sorted_priorities = [0]
+        
         # Group night dates by month to enforce monthly limits
         night_dates_by_month = defaultdict(list)
         for night_date in available_night_dates:
@@ -312,52 +349,49 @@ class ShiftAssigner:
         # Initialize monthly night shift counters for each person
         monthly_night_counts = defaultdict(lambda: defaultdict(int))
         
-        # Assign one person per required night date
-        shuffled_people = night_available_people.copy()  # Only use night-available people
-        
-        # Sort by night priority if enabled (higher priority first)
-        if self.scheduler.settings['priority_assignment']['night_priority_enabled']:
-            shuffled_people.sort(key=lambda p: self.scheduler.people[p]['night_priority'], reverse=True)
-            self.logger.log('night_shift_assignment', 'debug', f"Sorted people by night priority: {[(p, self.scheduler.people[p]['night_priority']) for p in shuffled_people]}")
-        else:
-            random.shuffle(shuffled_people)
-        
-        person_index = 0
+        # Assign one person per required night date using STRICT PRIORITY
         for date in available_night_dates:
-            # Find an available person for this night
             assigned = False
-            attempts = 0
             month_key = (date.year, date.month)
             
-            while not assigned and attempts < len(shuffled_people):
-                person_id = shuffled_people[person_index % len(shuffled_people)]
+            # Try each priority level from highest to lowest
+            for priority_level in sorted_priorities:
+                if assigned:
+                    break
                 
-                # Check if person has exceeded monthly night shift limit
-                if monthly_night_counts[person_id][month_key] >= self.scheduler.settings['night_shifts_per_month']:
-                    person_index += 1
-                    attempts += 1
-                    continue
+                eligible_people = priority_groups[priority_level].copy()
+                random.shuffle(eligible_people)  # Randomize within same priority level
                 
-                if self.can_assign_shift(person_id, date, 'night'):
-                    self.scheduler.schedule[person_id][date].append('night')
-                    self.scheduler.shift_counts[person_id]['night'] += 1
-                    monthly_night_counts[person_id][month_key] += 1
-                    self.logger.log('night_shift_assignment', 'debug', f"Assigned night shift to person {person_id} on {date} (month {month_key[1]}/{month_key[0]}: {monthly_night_counts[person_id][month_key]}/{self.scheduler.settings['night_shifts_per_month']})")
+                self.logger.log('night_shift_assignment', 'debug', f"Trying priority level {priority_level} for {date}: {eligible_people}")
+                
+                for person_id in eligible_people:
+                    # Check if person has exceeded monthly night shift limit
+                    if monthly_night_counts[person_id][month_key] >= self.scheduler.settings['night_shifts_per_month']:
+                        continue
                     
-                    # CRITICAL: Block the next day completely for this person
-                    next_date = date + timedelta(days=1)
-                    if next_date <= dates[-1]:  # Only if next day is within scheduling period
-                        # Clear any existing shifts on the next day
-                        self.scheduler.schedule[person_id][next_date] = ['rest_after_night']
-                        self.logger.log('night_shift_assignment', 'debug', f"  Blocked {next_date} for person {person_id} (rest after night shift)")
-                    
-                    assigned = True
+                    if self.can_assign_shift(person_id, date, 'night'):
+                        self.scheduler.schedule[person_id][date].append('night')
+                        self.scheduler.shift_counts[person_id]['night'] += 1
+                        monthly_night_counts[person_id][month_key] += 1
+                        self.logger.log('night_shift_assignment', 'debug', f"Assigned night shift to person {person_id} (priority {priority_level}) on {date} (month {month_key[1]}/{month_key[0]}: {monthly_night_counts[person_id][month_key]}/{self.scheduler.settings['night_shifts_per_month']})")
+                        
+                        # CRITICAL: Block the next day completely for this person
+                        next_date = date + timedelta(days=1)
+                        if next_date <= dates[-1]:  # Only if next day is within scheduling period
+                            # Clear any existing shifts on the next day
+                            self.scheduler.schedule[person_id][next_date] = ['rest_after_night']
+                            self.logger.log('night_shift_assignment', 'debug', f"  Blocked {next_date} for person {person_id} (rest after night shift)")
+                        
+                        assigned = True
+                        break
                 
-                person_index += 1
-                attempts += 1
+                if assigned:
+                    break
+                else:
+                    self.logger.log('night_shift_assignment', 'debug', f"No eligible people found at priority level {priority_level} for {date}")
             
             if not assigned:
-                warning = f"Could not assign night shift on {date.strftime('%d/%m/%Y')} - no eligible night-available staff (monthly limits reached)"
+                warning = f"Could not assign night shift on {date.strftime('%d/%m/%Y')} - no eligible night-available staff at any priority level (monthly limits reached)"
                 self.scheduler.warnings.append(warning)
                 self.logger.log('shift_assignment_warnings', 'error', f"Warning: {warning}")
 
@@ -465,12 +499,16 @@ class ShiftAssigner:
                         # Skip if person has reached their adjusted afternoon target
                         if current_afternoons >= adjusted_target:
                             continue
-                    
-                    eligible_people.append(person_id)
+                
+                eligible_people.append(person_id)
         
         # Return None if no eligible people - no constraint relaxation
         if not eligible_people:
             return None
+        
+        # NEW: For weekend shifts, use STRICT PRIORITY assignment
+        if is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
+            return self._find_best_person_weekend_strict_priority(eligible_people, date, shift)
         
         # Prioritize people who need more hours to reach minimum
         def priority_score(person_id):
@@ -537,12 +575,9 @@ class ShiftAssigner:
                     if afternoon_shifts_this_week > 0:
                         base_priority = (base_priority[0] + 1, afternoon_shifts_this_week, base_priority[1])
             
-            # NEW: Add priority from CSV data
+            # NEW: Add priority from CSV data (but NOT for night shifts - they're handled strictly elsewhere)
             priority_bonus = 0
-            if shift == 'night' and self.scheduler.settings['priority_assignment']['night_priority_enabled']:
-                night_priority = self.scheduler.people[person_id].get('night_priority', 0)
-                priority_bonus = -night_priority * self.scheduler.settings['priority_assignment']['priority_weight']
-            elif is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
+            if is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
                 weekend_priority = self.scheduler.people[person_id].get('weekend_priority', 0)
                 priority_bonus = -weekend_priority * self.scheduler.settings['priority_assignment']['priority_weight']
             
@@ -558,6 +593,44 @@ class ShiftAssigner:
         
         return min(eligible_people, key=priority_score)
     
+    def _find_best_person_weekend_strict_priority(self, eligible_people, date, shift):
+        """Find best person for weekend shift using STRICT priority (similar to night shifts)"""
+        # Group people by weekend priority
+        priority_groups = {}
+        for person_id in eligible_people:
+            priority = self.scheduler.people[person_id].get('weekend_priority', 0)
+            if priority not in priority_groups:
+                priority_groups[priority] = []
+            priority_groups[priority].append(person_id)
+        
+        # Sort priority levels (highest first)
+        sorted_priorities = sorted(priority_groups.keys(), reverse=True)
+        self.logger.log('weekend_shift_balancing', 'debug', f"Weekend priority groups for {date} ({shift}): {[(p, priority_groups[p]) for p in sorted_priorities]}")
+        
+        # Try each priority level from highest to lowest
+        for priority_level in sorted_priorities:
+            candidates = priority_groups[priority_level].copy()
+            if not candidates:
+                continue
+                
+            # Randomize within same priority level to avoid bias
+            random.shuffle(candidates)
+            
+            self.logger.log('weekend_shift_balancing', 'debug', f"Trying priority level {priority_level} for weekend {shift} on {date}: {candidates}")
+            
+            # For weekend shifts, we can return the first available candidate at this priority level
+            # (unlike night shifts which have additional monthly limit checks)
+            for person_id in candidates:
+                # Additional checks can be added here if needed (e.g., monthly weekend limits)
+                self.logger.log('weekend_shift_balancing', 'debug', f"Selected person {person_id} (priority {priority_level}) for weekend {shift} on {date}")
+                return person_id
+            
+            self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at priority level {priority_level} for weekend {shift} on {date}")
+        
+        # If no one found at any priority level, return None
+        self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at any priority level for weekend {shift} on {date}")
+        return None
+
     def can_assign_shift(self, person_id, date, shift):
         """Check if person can be assigned to this shift"""
         person = self.scheduler.people[person_id]

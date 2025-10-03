@@ -206,23 +206,52 @@ class HospitalScheduler:
         self.logger.log('multi_run_optimization', 'info', "=== MULTI-RUN OPTIMIZATION ===")
         self.logger.log('multi_run_optimization', 'info', f"Running up to {self.settings['multi_run']['max_runs']} attempts to find the best schedule...")
         
+        # Check if desiderata enforcement is enabled
+        enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', False)
+        if enforce_desiderata:
+            self.logger.log('multi_run_optimization', 'info', "Desiderata enforcement: ENABLED - only compliant runs will be considered")
+        
         best_schedule = None
         best_constraint_results = None
         best_passed_count = -1
         best_hour_difference = float('inf')
         all_runs = []
         
+        # Progress bar settings
+        max_runs = self.settings['multi_run']['max_runs']
+        show_progress = self.settings['multi_run'].get('show_progress_bar', True)
+        progress_width = 50
+        
         # Save original randomization settings
         original_randomize_people = self.settings.get('randomize_people_order', False)
         original_randomize_priority = self.settings.get('randomize_priority_tiebreaking', False)
+        
+        # Save original logging settings if silence is enabled
+        original_logging_settings = None
+        if self.settings['multi_run'].get('silence_output', True):
+            original_logging_settings = self.logger.logging_settings.copy()
+            # Set all logging to 'silence' except multi_run_optimization
+            silenced_settings = {}
+            for category in self.logger.logging_settings:
+                if category == 'multi_run_optimization':
+                    silenced_settings[category] = self.logger.logging_settings[category]
+                else:
+                    silenced_settings[category] = 'silence'
+            self.logger.update_settings(silenced_settings)
         
         # Enable randomization for multi-run if specified
         if self.settings['multi_run']['enable_randomization_for_multi_run']:
             self.settings['randomize_people_order'] = True
             self.settings['randomize_priority_tiebreaking'] = True
         
-        for run_id in range(self.settings['multi_run']['max_runs']):
-            self.logger.log('multi_run_optimization', 'debug', f"\nRun {run_id + 1}/{self.settings['multi_run']['max_runs']}...")
+        # Initialize progress bar
+        if show_progress:
+            print(f"\nProgress: [{'':>{progress_width}}] 0/{max_runs} (0.0%)", end='', flush=True)
+        
+        skipped_runs = 0  # Track runs skipped due to desiderata violations
+        
+        for run_id in range(max_runs):
+            self.logger.log('multi_run_optimization', 'debug', f"\nRun {run_id + 1}/{max_runs}...")
             
             try:
                 # Reset scheduler state for each run
@@ -236,12 +265,21 @@ class HospitalScheduler:
                 # Generate single schedule
                 schedule = self._generate_schedule_single(start_date, end_date)
                 
+                # Check desiderata compliance if enforcement is enabled
+                if enforce_desiderata:
+                    is_compliant, violation_reason = self._check_desiderata_compliance(start_date, end_date)
+                    if not is_compliant:
+                        skipped_runs += 1
+                        self.logger.log('multi_run_optimization', 'debug', f"  Skipped run {run_id + 1}: {violation_reason}")
+                        continue  # Skip this run and try the next one
+                
                 # Verify constraints
                 constraint_results = self.verify_constraints(start_date, end_date)
                 
                 # Count passed constraints
                 passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
                 total_constraints = len(constraint_results)
+                failed_count = total_constraints - passed_count
                 warning_count = len(self.warnings)
                 
                 # Calculate hour difference between highest and lowest person
@@ -258,7 +296,7 @@ class HospitalScheduler:
                 
                 hour_difference = max(person_hours) - min(person_hours) if person_hours else 0
                 
-                self.logger.log('multi_run_optimization', 'debug', f"  Result: {passed_count}/{total_constraints} constraints passed, {warning_count} warnings, {hour_difference}h difference")
+                self.logger.log('multi_run_optimization', 'debug', f"  Result: {passed_count}/{total_constraints} constraints passed, {failed_count} failed, {warning_count} warnings, {hour_difference}h difference")
                 
                 # Store run results
                 run_result = {
@@ -267,6 +305,7 @@ class HospitalScheduler:
                     'constraint_results': constraint_results.copy(),
                     'passed_count': passed_count,
                     'total_constraints': total_constraints,
+                    'failed_count': failed_count,
                     'warning_count': warning_count,
                     'hour_difference': hour_difference,
                     'warnings': self.warnings.copy(),
@@ -294,18 +333,44 @@ class HospitalScheduler:
                     best_shift_counts = self.shift_counts.copy()
                     self.logger.log('multi_run_optimization', 'info', f"  🎯 New best result!")
                 
-                # Early termination if perfect solution found
-                if passed_count >= self.settings['multi_run']['target_passes']:
-                    self.logger.log('multi_run_optimization', 'info', f"  ✅ Target of {self.settings['multi_run']['target_passes']} passed constraints reached!")
+                # Update progress bar
+                if show_progress:
+                    progress = (run_id + 1) / max_runs
+                    filled_width = int(progress_width * progress)
+                    bar = '█' * filled_width + '░' * (progress_width - filled_width)
+                    percent = progress * 100
+                    
+                    # Add status indicator
+                    status = ""
+                    if is_better:
+                        status = " 🎯"
+                    elif failed_count <= self.settings['multi_run']['target_fails']:
+                        status = " ✅"
+                    
+                    # Include skipped runs info if enforcement is enabled
+                    skip_info = f" (Skipped: {skipped_runs})" if enforce_desiderata and skipped_runs > 0 else ""
+                    print(f"\rProgress: [{bar}] {run_id + 1}/{max_runs} ({percent:.1f}%) - Best: {best_passed_count}/{total_constraints}{status}{skip_info}", end='', flush=True)
+                
+                # Early termination if target reached
+                if failed_count <= self.settings['multi_run']['target_fails']:
+                    self.logger.log('multi_run_optimization', 'info', f"  ✅ Target of ≤{self.settings['multi_run']['target_fails']} failed constraints reached!")
                     break
                 
             except Exception as e:
                 self.logger.log('multi_run_optimization', 'error', f"  ❌ Run failed with exception: {e}")
                 continue
         
-        # Restore original randomization settings
+        # Clear progress bar line
+        if show_progress:
+            print()  # New line after progress bar
+        
+        # Restore original settings
         self.settings['randomize_people_order'] = original_randomize_people
         self.settings['randomize_priority_tiebreaking'] = original_randomize_priority
+        
+        # Restore original logging settings if they were silenced
+        if original_logging_settings is not None:
+            self.logger.update_settings(original_logging_settings)
         
         self.logger.log('multi_run_optimization', 'info', f"\n=== MULTI-RUN RESULTS ===")
         self.logger.log('multi_run_optimization', 'info', f"Completed {len(all_runs)} runs")
@@ -334,6 +399,12 @@ class HospitalScheduler:
             self.warnings = best_warnings
             self.shift_counts = best_shift_counts
             self.logger.log('multi_run_optimization', 'info', f"\n=== USING BEST RESULT (Run {sorted_runs[0]['run_id'] + 1}) ===")
+        
+        # Report desiderata enforcement results
+        if enforce_desiderata:
+            compliant_runs = len(all_runs)
+            total_attempts = max_runs
+            self.logger.log('multi_run_optimization', 'info', f"Desiderata enforcement: {compliant_runs} compliant runs out of {total_attempts} attempts ({skipped_runs} skipped)")
         
         return self.schedule
     
@@ -581,6 +652,37 @@ class HospitalScheduler:
         self.last_constraint_results = constraint_results
         return constraint_results
 
+    def _check_desiderata_compliance(self, start_date, end_date):
+        """Check if current schedule complies with desiderata (forbidden shifts and vacation)"""
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        
+        for person_id in self.people.keys():
+            person_data = self.people[person_id]
+            
+            # Check forbidden shifts compliance
+            for forbidden in person_data.get('forbidden_shifts', []):
+                if forbidden and forbidden['date'] in all_dates:
+                    assigned_shifts = self.schedule[person_id].get(forbidden['date'], [])
+                    for forbidden_shift in forbidden['shifts']:
+                        if forbidden_shift in assigned_shifts:
+                            return False, f"Person {person_id} assigned forbidden {forbidden_shift} on {forbidden['date']}"
+
+            # Check forbidden weekends compliance
+            for forbidden_weekend in person_data.get('forbidden_weekends', []):
+                if forbidden_weekend:
+                    # Check if this weekend (Saturday or Sunday) is forbidden
+                    for date in all_dates:
+                        if date.weekday() >= 5:  # Weekend day
+                            weekend_start = date - timedelta(days=date.weekday() - 5)  # Get Saturday
+                            if abs((weekend_start - forbidden_weekend).days) <= 1:
+                                assigned_shifts = self.schedule[person_id].get(date, [])
+                                # Only flag if they have non-night shifts (actual weekend work)
+                                non_night_shifts = [s for s in assigned_shifts if s not in ['night', 'rest_after_night']]
+                                if non_night_shifts:
+                                    return False, f"Person {person_id} assigned weekend work on forbidden weekend {forbidden_weekend}"
+        
+        return True, "Compliant"
+
 def main():
     # Option 1: Use default configuration
     # settings = None
@@ -593,7 +695,7 @@ def main():
         'night_staff': 1,
         'saturday_morning_staff': 0,
         'saturday_afternoon_staff': 0,
-        'sunday_staff': 2,
+        'sunday_staff': 1,
         'festivity_staff': 1,  # Staff required for festivity days (MP shift)
         
         # Working hours constraints
@@ -638,10 +740,13 @@ def main():
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': False,           # Enable multi-run optimization
-            'max_runs': 100,           # Maximum number of runs to attempt
-            'target_passes': 16,      # Stop early if this many constraints pass (max possible)
-            'enable_randomization_for_multi_run': True  # Enable randomization during multi-run
+            'enabled': True,           # Enable multi-run optimization
+            'max_runs': 1000,           # Maximum number of runs to attempt
+            'target_fails': 0,         # Stop early if this many or fewer constraints fail (0 = perfect solution)
+            'enable_randomization_for_multi_run': True,  # Enable randomization during multi-run
+            'silence_output': True,    # Silence all output during multi-run execution (except final results)
+            'show_progress_bar': True, # Show progress bar during multi-run execution
+            'enforce_desiderata': False  # Only consider runs that comply with forbidden shifts and vacation constraints
         },
         
         # Afternoon shift balancing
@@ -654,16 +759,16 @@ def main():
         
         # Logging/Output verbosity settings
         'logging': {
-            'data_loading': 'info',              # silence, error, info, debug
+            'data_loading': 'error',              # silence, error, info, debug
             'settings_display': 'info',          # silence, error, info, debug  
-            'multi_run_optimization': 'info',    # silence, error, info, debug
-            'night_shift_assignment': 'info',    # silence, error, info, debug
-            'workload_balancing': 'debug',       # silence, error, info, debug
-            'weekend_shift_balancing': 'debug',  # silence, error, info, debug
-            'fill_up_minimum_hours': 'info',     # silence, error, info, debug
+            'multi_run_optimization': 'error',    # silence, error, info, debug
+            'night_shift_assignment': 'error',    # silence, error, info, debug
+            'workload_balancing': 'error',       # silence, error, info, debug
+            'weekend_shift_balancing': 'error',  # silence, error, info, debug
+            'fill_up_minimum_hours': 'error',     # silence, error, info, debug
             'shift_assignment_warnings': 'error', # silence, error, info, debug
-            'constraint_verification': 'info',   # silence, error, info, debug
-            'schedule_display': 'info',          # silence, error, info, debug
+            'constraint_verification': 'error',   # silence, error, info, debug
+            'schedule_display': 'error',          # silence, error, info, debug
             'summary_statistics': 'info',       # silence, error, info, debug
             'export_notifications': 'info'      # silence, error, info, debug
         }
@@ -673,7 +778,8 @@ def main():
     config_file = None  # or 'my_config.json'
     
     # Option 4: Use preset configuration
-    preset = 'balanced'  # 'strict', 'balanced', 'optimized', 'debug'
+    preset = None  # Set to None or comment out to use your custom settings
+    # preset = 'balanced'  # 'strict', 'balanced', 'optimized', 'debug'
     
     # Load CSV data using new DataLoader
     data_loader = DataLoader()
@@ -730,18 +836,21 @@ def main():
     start_date = datetime(2025, 10, 1).date()
     end_date = datetime(2025, 10, 31).date()
     
-    # Create scheduler instance
+    # Create scheduler instance with default settings first
     scheduler = HospitalScheduler(
         people_data=people_data, 
         night_dates=night_dates,
         festivity_dates=festivity_dates,
-        settings=settings,
         config_file=config_file
     )
     
-    # Apply preset if specified
+    # Apply preset first if specified
     if preset:
         scheduler.apply_preset(preset)
+    
+    # Then apply your custom settings (this will override preset values)
+    if settings:
+        scheduler.update_settings(settings)
     
     # Show configuration summary if settings display is enabled
     if scheduler.config.get('logging.settings_display') in ['info', 'debug']:
