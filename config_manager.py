@@ -20,8 +20,9 @@ class ConfigManager:
             'min_morning_staff': 3,
             'max_afternoon_staff': 1,
             'night_staff': 1,
-            'saturday_morning_staff': 0,
+            'saturday_morning_staff': 1,
             'saturday_afternoon_staff': 0,
+            'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
             'sunday_staff': 1,
             'festivity_staff': 1,  # Staff required for festivity days (MP shift)
             
@@ -45,6 +46,14 @@ class ConfigManager:
             'night_shifts_only_weekdays': False,
             'fill_up_to_minimum_hours': False,  # Add extra shifts to reach minimum hours
             'append_statistics_to_schedule': True,  # Append staff statistics to schedule CSV output
+            'prevent_consecutive_weekend_days': False,  # Prevent working both Saturday and Sunday in same weekend
+            
+            # Data file names
+            'data_files': {
+                'people_data_file': 'desiderata',     # Name for people/constraints data file (without extension)
+                'night_dates_file': 'notti',          # Name for required night dates file (without extension)
+                'festivity_dates_file': 'festivi'     # Name for festivity dates file (without extension)
+            },
             
             # Bias mitigation settings
             'randomize_people_order': False,  # Randomize people order at start of scheduling
@@ -197,6 +206,14 @@ class ConfigManager:
         priority_weight = priority_settings.get('priority_weight', 1.0)
         if not isinstance(priority_weight, (int, float)) or priority_weight < 0:
             errors.append("priority_assignment.priority_weight must be a non-negative number")
+        
+        # Validate data file settings
+        data_files = self.get('data_files', {})
+        required_files = ['people_data_file', 'night_dates_file', 'festivity_dates_file']
+        for file_key in required_files:
+            file_name = data_files.get(file_key, '')
+            if not isinstance(file_name, str) or not file_name.strip():
+                errors.append(f"data_files.{file_key} must be a non-empty string")
         
         return len(errors) == 0, errors
     
@@ -361,6 +378,12 @@ class ConfigManager:
         print(f"  Night priority: {'ENABLED' if self.get('priority_assignment.night_priority_enabled') else 'DISABLED'}")
         print(f"  Weekend priority: {'ENABLED' if self.get('priority_assignment.weekend_priority_enabled') else 'DISABLED'}")
         print(f"  Append statistics to CSV: {'YES' if self.get('append_statistics_to_schedule') else 'NO'}")
+        
+        print(f"\nData Files:")
+        print(f"  People data: {self.get('data_files.people_data_file')}.csv/.xlsx/.xls")
+        print(f"  Night dates: {self.get('data_files.night_dates_file')}.csv/.xlsx/.xls")
+        print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')}.csv/.xlsx/.xls")
+        print(f"  Prevent consecutive weekends: {'YES' if self.get('prevent_consecutive_weekend_days') else 'NO'}")
         
         # Show validation status
         is_valid, errors = self.validate_settings()

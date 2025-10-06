@@ -692,9 +692,10 @@ def main():
         # Staff requirements
         'min_morning_staff': 3,
         'max_afternoon_staff': 1,
-        'night_staff': 1,
-        'saturday_morning_staff': 0,
+        'night_staff': 0,
+        'saturday_morning_staff': 1,
         'saturday_afternoon_staff': 0,
+        'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
         'sunday_staff': 1,
         'festivity_staff': 1,  # Staff required for festivity days (MP shift)
         
@@ -708,7 +709,7 @@ def main():
         
         # Monthly and daily limits
         'max_weekend_days_per_month': 2,
-        'night_shifts_per_month': 1,
+        'night_shifts_per_month': 0,
         'max_consecutive_days': 6,
         'min_rest_hours_between_shifts': 11,
         'min_continuous_rest_hours': 24,
@@ -717,39 +718,45 @@ def main():
         'weekend_morning_plus_afternoon': True,  # Saturday can have morning+afternoon
         'night_shifts_only_weekdays': False,
         'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
+        'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
+        
+        # Data file names (with extensions)
+        'data_files': {
+            'people_data_file': 'desiderata_original.csv',     # People/constraints data file with extension
+            'night_dates_file': 'notti.csv',          # Required night dates file with extension
+            'festivity_dates_file': 'festivi.csv'     # Festivity dates file with extension
+        },
         
         # Bias mitigation settings
-        'randomize_people_order': True,  # Randomize people order at start of scheduling
-        'randomize_priority_tiebreaking': True,  # Add randomization to priority scoring
+        'randomize_people_order': True,
+        'randomize_priority_tiebreaking': True,
         
         # Priority assignment settings
         'priority_assignment': {
-            'night_priority_enabled': True,    # Use night priority from CSV data
-            'weekend_priority_enabled': True,  # Use weekend priority from CSV data
-            'priority_weight': 1.0             # Weight factor for priority in scoring
+            'night_priority_enabled': True,
+            'weekend_priority_enabled': True,
+            'priority_weight': 1.0
         },
         
-        # Workload balancing settings
         'workload_balancing': {
-            'enabled': False,  # Enable/disable workload balancing
-            'night_burden_coefficient': 1.5,  # Each night reduces afternoon target by this much
-            'weekend_burden_coefficient': 0.8,  # Each weekend day reduces afternoon target by this much
-            'min_afternoon_shifts': 0,  # Never go below this many afternoon shifts per person
-            'max_afternoon_compensation': 4  # Maximum afternoon shift reduction per person
+            'enabled': False,
+            'night_burden_coefficient': 1.5,
+            'weekend_burden_coefficient': 0.8,
+            'min_afternoon_shifts': 0,
+            'max_afternoon_compensation': 4
         },
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': True,           # Enable multi-run optimization
-            'max_runs': 1000,           # Maximum number of runs to attempt
-            'target_fails': 0,         # Stop early if this many or fewer constraints fail (0 = perfect solution)
-            'enable_randomization_for_multi_run': True,  # Enable randomization during multi-run
-            'silence_output': True,    # Silence all output during multi-run execution (except final results)
-            'show_progress_bar': True, # Show progress bar during multi-run execution
-            'enforce_desiderata': True  # Only consider runs that comply with forbidden shifts and vacation constraints
+            'enabled': True,
+            'max_runs': 1000,
+            'target_fails': 0,
+            'enable_randomization_for_multi_run': True,
+            'silence_output': True,
+            'show_progress_bar': True,
+            'enforce_desiderata': True
         },
         
-        # Afternoon shift balancing
         'afternoon_balancing': {
             'enabled': False,           # Enable afternoon shift weekly balancing
             'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
@@ -757,20 +764,20 @@ def main():
             'max_consecutive_afternoons': 1  # Maximum consecutive afternoon shifts allowed (0 = no limit)
         },
         
-        # Logging/Output verbosity settings
+        # Logging/Output verbosity settings (silence, error, info, debug)
         'logging': {
-            'data_loading': 'error',              # silence, error, info, debug
-            'settings_display': 'error',          # silence, error, info, debug  
-            'multi_run_optimization': 'error',    # silence, error, info, debug
-            'night_shift_assignment': 'error',    # silence, error, info, debug
-            'workload_balancing': 'error',       # silence, error, info, debug
-            'weekend_shift_balancing': 'error',  # silence, error, info, debug
-            'fill_up_minimum_hours': 'error',     # silence, error, info, debug
-            'shift_assignment_warnings': 'error', # silence, error, info, debug
-            'constraint_verification': 'error',   # silence, error, info, debug
-            'schedule_display': 'error',          # silence, error, info, debug
-            'summary_statistics': 'info',       # silence, error, info, debug
-            'export_notifications': 'info'      # silence, error, info, debug
+            'data_loading': 'error',              
+            'settings_display': 'error',
+            'multi_run_optimization': 'error',
+            'night_shift_assignment': 'error',
+            'workload_balancing': 'error',
+            'weekend_shift_balancing': 'error',
+            'fill_up_minimum_hours': 'error',
+            'shift_assignment_warnings': 'error',
+            'constraint_verification': 'error',
+            'schedule_display': 'error',
+            'summary_statistics': 'info',
+            'export_notifications': 'info'
         }
     }
     
@@ -793,37 +800,62 @@ def main():
         if not dependencies['excel_support']:
             print("💡 Tip: Install pandas and openpyxl for Excel (.xlsx) support: pip install pandas openpyxl")
     
-    # Try to load data files (supports CSV, XLS, XLSX automatically)
-    people_data = data_loader.load_people_data('desiderata.csv', log_level='error')
+    # Create scheduler instance first to get settings with file names
+    temp_scheduler = HospitalScheduler(config_file=config_file)
     
-    # Try alternative formats if CSV not found
-    if not people_data or len(people_data) < 2:  # Minimal validation
-        for alt_file in ['desiderata.xlsx', 'desiderata.xls']:
-            if os.path.exists(alt_file):
-                print(f"📊 Found {alt_file}, loading...")
+    # Apply preset first if specified
+    if preset:
+        temp_scheduler.apply_preset(preset)
+    
+    # Then apply your custom settings (this will override preset values)
+    if settings:
+        temp_scheduler.update_settings(settings)
+    
+    # Get the configured file names
+    people_file = temp_scheduler.settings['data_files']['people_data_file']
+    night_file = temp_scheduler.settings['data_files']['night_dates_file']
+    festivity_file = temp_scheduler.settings['data_files']['festivity_dates_file']
+    
+    # Load data files directly with specified extensions
+    people_data = data_loader.load_people_data(people_file, log_level='error')
+    
+    # If the specified file doesn't exist, try alternative formats
+    if not people_data or len(people_data) < 2:
+        file_base = os.path.splitext(people_file)[0]  # Remove extension to get base name
+        for ext in ['xlsx', 'xls', 'csv']:
+            alt_file = f'{file_base}.{ext}'
+            if os.path.exists(alt_file) and alt_file != people_file:  # Don't retry the same file
+                print(f"📊 File {people_file} not found, trying {alt_file}...")
                 people_data = data_loader.load_people_data(alt_file, log_level='error')
-                break
+                if people_data and len(people_data) >= 2:
+                    break
     
-    night_dates = data_loader.load_night_dates('notti.csv', log_level='error')
+    night_dates = data_loader.load_night_dates(night_file, log_level='error')
     
-    # Try alternative formats for night dates
+    # If the specified file doesn't exist, try alternative formats
     if not night_dates:
-        for alt_file in ['notti.xlsx', 'notti.xls']:
-            if os.path.exists(alt_file):
-                print(f"🌙 Found {alt_file}, loading...")
+        file_base = os.path.splitext(night_file)[0]
+        for ext in ['xlsx', 'xls', 'csv']:
+            alt_file = f'{file_base}.{ext}'
+            if os.path.exists(alt_file) and alt_file != night_file:
+                print(f"🌙 File {night_file} not found, trying {alt_file}...")
                 night_dates = data_loader.load_night_dates(alt_file, log_level='error')
-                break
+                if night_dates:
+                    break
     
     # Load festivity dates
-    festivity_dates = data_loader.load_festivity_dates('festivi.csv', log_level='error')
+    festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error')
     
-    # Try alternative formats for festivity dates
+    # If the specified file doesn't exist, try alternative formats
     if not festivity_dates:
-        for alt_file in ['festivi.xlsx', 'festivi.xls']:
-            if os.path.exists(alt_file):
-                print(f"🎉 Found {alt_file}, loading...")
+        file_base = os.path.splitext(festivity_file)[0]
+        for ext in ['xlsx', 'xls', 'csv']:
+            alt_file = f'{file_base}.{ext}'
+            if os.path.exists(alt_file) and alt_file != festivity_file:
+                print(f"🎉 File {festivity_file} not found, trying {alt_file}...")
                 festivity_dates = data_loader.load_festivity_dates(alt_file, log_level='error')
-                break
+                if festivity_dates:
+                    break
     
     # Validate loaded data
     is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)
@@ -836,7 +868,7 @@ def main():
     start_date = datetime(2025, 10, 1).date()
     end_date = datetime(2025, 10, 31).date()
     
-    # Create scheduler instance with default settings first
+    # Create scheduler instance with actual data
     scheduler = HospitalScheduler(
         people_data=people_data, 
         night_dates=night_dates,

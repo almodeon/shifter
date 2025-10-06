@@ -57,8 +57,8 @@ class ShiftAssigner:
                     # Sunday has only MP (morning+afternoon combined) shift
                     shifts_needed = ['mp']  # Special MP shift for Sunday
                 else:  # Saturday
-                    # Saturday has separate morning and afternoon shifts
-                    shifts_needed = ['morning', 'afternoon']
+                    # Saturday has morning, optional afternoon, and optional MP shifts
+                    shifts_needed = ['morning', 'afternoon', 'mp']
             else:
                 # Weekday shifts: morning, afternoon (night already assigned)
                 shifts_needed = ['morning', 'afternoon']
@@ -69,7 +69,7 @@ class ShiftAssigner:
                     if is_festivity:
                         continue
                     if date.weekday() == 5:  # Saturday
-                        required_people = self.scheduler.settings.get('saturday_morning_staff', 2)
+                        required_people = self.scheduler.settings.get('saturday_morning_staff', 1)
                     elif date.weekday() == 6:  # Sunday - no separate morning
                         continue
                     else:  # Weekday
@@ -79,13 +79,15 @@ class ShiftAssigner:
                     if is_festivity:
                         continue
                     if date.weekday() == 5:  # Saturday
-                        required_people = self.scheduler.settings.get('saturday_afternoon_staff', 1)
+                        required_people = self.scheduler.settings.get('saturday_afternoon_staff', 0)
                     elif date.weekday() == 6:  # Sunday - no separate afternoon
                         continue
                     else:  # Weekday
                         required_people = self.scheduler.settings['max_afternoon_staff']
-                elif shift == 'mp':  # Sunday MP shift or festivity MP shift
-                    if is_festivity:
+                elif shift == 'mp':  # Saturday MP, Sunday MP shift or festivity MP shift
+                    if date.weekday() == 5:  # Saturday MP
+                        required_people = self.scheduler.settings.get('saturday_mp_staff', 1)
+                    elif is_festivity:
                         required_people = self.scheduler.settings.get('festivity_staff', 1)
                     else:  # Sunday
                         required_people = self.scheduler.settings.get('sunday_staff', 1)
@@ -446,65 +448,106 @@ class ShiftAssigner:
     def find_best_person_for_shift(self, people_list, date, shift):
         """Find the best person for a shift based on current workload and constraints - no constraint relaxation"""
         eligible_people = []
+        eligibility_debug = {}  # Track reasons for ineligibility
         
         # NEW: Weekend shift balancing - exclude person(s) with maximum weekend shifts
         is_weekend_shift = date.weekday() >= 5 and shift in ['morning', 'afternoon', 'mp']
         excluded_people = set()
         
         if is_weekend_shift:
-            # Find the maximum number of weekend shifts among all people
-            weekend_counts = [self.scheduler.shift_counts[pid]['weekend_days'] for pid in people_list]
-            max_weekend_shifts = max(weekend_counts) if weekend_counts else 0
-            
-            # Exclude people who have the maximum number of weekend shifts
+            # Exclude only those who have reached the configured maximum
+            max_allowed = self.scheduler.settings.get('max_weekend_days_per_month', 2)
             for person_id in people_list:
-                if self.scheduler.shift_counts[person_id]['weekend_days'] == max_weekend_shifts and max_weekend_shifts > 0:
+                if self.scheduler.shift_counts[person_id]['weekend_days'] >= max_allowed:
                     excluded_people.add(person_id)
-            
-            self.logger.log('weekend_shift_balancing', 'debug', f"Weekend shift balancing on {date} ({shift}): max_weekend_shifts={max_weekend_shifts}, excluded={excluded_people}")
+            self.logger.log(
+                'weekend_shift_balancing', 'debug',
+                f"Weekend shift balancing on {date} ({shift}): max_allowed={max_allowed}, excluded={excluded_people}"
+            )
         
         for person_id in people_list:
+            reasons = []  # Track reasons why this person is not eligible
+            
             # Skip if person already has this shift type on this date
             if shift in self.scheduler.schedule[person_id].get(date, []):
+                reasons.append(f"already has {shift} shift on this date")
+                eligibility_debug[person_id] = reasons
                 continue
             
             # NEW: Skip if person is excluded due to maximum weekend shifts
             if person_id in excluded_people:
+                reasons.append(f"excluded due to maximum weekend shifts ({max_allowed})")
+                eligibility_debug[person_id] = reasons
                 continue
                 
-            if self.can_assign_shift(person_id, date, shift):
-                # Check weekly hour constraints
-                week_start = date - timedelta(days=date.weekday())
-                weekly_hours = self.calculate_weekly_hours(person_id, week_start)
+            # Check basic shift assignment constraints
+            can_assign, constraint_reason = self._check_can_assign_shift_detailed(person_id, date, shift)
+            if not can_assign:
+                reasons.append(f"constraint violation: {constraint_reason}")
+                eligibility_debug[person_id] = reasons
+                continue
                 
-                # Estimate hours for this shift
-                if shift == 'morning':
-                    shift_hours = self.scheduler.settings['morning_shift_hours']
-                elif shift == 'afternoon':
-                    shift_hours = self.scheduler.settings['afternoon_shift_hours']
-                elif shift == 'mp':  # Sunday MP shift
-                    shift_hours = self.scheduler.settings.get('sunday_mp_shift_hours', 12)
-                else:  # night
-                    shift_hours = self.scheduler.settings['night_shift_hours']
+            # Check weekly hour constraints
+            week_start = date - timedelta(days=date.weekday())
+            weekly_hours = self.calculate_weekly_hours(person_id, week_start)
+            
+            # Estimate hours for this shift
+            if shift == 'morning':
+                shift_hours = self.scheduler.settings['morning_shift_hours']
+            elif shift == 'afternoon':
+                shift_hours = self.scheduler.settings['afternoon_shift_hours']
+            elif shift == 'mp':  # Sunday MP shift
+                shift_hours = self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+            else:  # night
+                shift_hours = self.scheduler.settings['night_shift_hours']
+            
+            projected_hours = weekly_hours + shift_hours
+            
+            # Check if within limits - no relaxation
+            if projected_hours > self.scheduler.settings['max_weekly_hours']:
+                reasons.append(f"would exceed max weekly hours ({projected_hours:.1f}h > {self.scheduler.settings['max_weekly_hours']}h)")
+                eligibility_debug[person_id] = reasons
+                continue
+            
+            # NEW: For afternoon shifts, check workload balancing
+            if shift == 'afternoon' and self.scheduler.settings['workload_balancing']['enabled']:
+                current_afternoons = self.scheduler.shift_counts[person_id]['afternoon']
+                adjusted_target = self.afternoon_targets.get(person_id, float('inf'))
                 
-                projected_hours = weekly_hours + shift_hours
-                
-                # Check if within limits - no relaxation
-                if projected_hours <= self.scheduler.settings['max_weekly_hours']:
-                    # NEW: For afternoon shifts, check workload balancing
-                    if shift == 'afternoon' and self.scheduler.settings['workload_balancing']['enabled']:
-                        current_afternoons = self.scheduler.shift_counts[person_id]['afternoon']
-                        adjusted_target = self.afternoon_targets.get(person_id, float('inf'))
-                        
-                        # Skip if person has reached their adjusted afternoon target
-                        if current_afternoons >= adjusted_target:
-                            continue
-                
-                eligible_people.append(person_id)
+                # Skip if person has reached their adjusted afternoon target
+                if current_afternoons >= adjusted_target:
+                    reasons.append(f"reached afternoon target ({current_afternoons} >= {adjusted_target:.1f})")
+                    eligibility_debug[person_id] = reasons
+                    continue
+            
+            # If we get here, person is eligible
+            eligible_people.append(person_id)
+            eligibility_debug[person_id] = ["eligible"]
         
-        # Return None if no eligible people - no constraint relaxation
+        # Log detailed eligibility debug information if no one is eligible
         if not eligible_people:
+            self.logger.log('shift_assignment_warnings', 'error', f"No eligible people for {shift} shift on {date.strftime('%d/%m/%Y')}")
+            self.logger.log('shift_assignment_warnings', 'error', "Eligibility breakdown:")
+            for person_id in people_list:
+                reasons = eligibility_debug.get(person_id, ["unknown"])
+                self.logger.log('shift_assignment_warnings', 'error', f"  Person {person_id}: {'; '.join(reasons)}")
             return None
+        
+        # Log eligibility summary when there are eligible people
+        if self.logger.should_log('shift_assignment_warnings', 'debug'):
+            eligible_count = len(eligible_people)
+            total_count = len(people_list)
+            self.logger.log('shift_assignment_warnings', 'debug', f"{shift} shift on {date}: {eligible_count}/{total_count} people eligible")
+            if eligible_count < total_count:
+                ineligible_summary = {}
+                for person_id, reasons in eligibility_debug.items():
+                    if person_id not in eligible_people:
+                        for reason in reasons:
+                            if reason not in ineligible_summary:
+                                ineligible_summary[reason] = 0
+                            ineligible_summary[reason] += 1
+                
+                self.logger.log('shift_assignment_warnings', 'debug', f"  Ineligibility reasons: {dict(ineligible_summary)}")
         
         # NEW: For weekend shifts, use STRICT PRIORITY assignment
         if is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
@@ -633,11 +676,16 @@ class ShiftAssigner:
 
     def can_assign_shift(self, person_id, date, shift):
         """Check if person can be assigned to this shift"""
+        can_assign, reason = self._check_can_assign_shift_detailed(person_id, date, shift)
+        return can_assign
+
+    def _check_can_assign_shift_detailed(self, person_id, date, shift):
+        """Check if person can be assigned to this shift with detailed reason - returns (can_assign, reason)"""
         person = self.scheduler.people[person_id]
         
         # NEW: Check night shift availability
         if shift == 'night' and not person['night_available']:
-            return False
+            return False, "not available for night shifts"
         
         # NEW: Check consecutive afternoon shift limit
         if shift == 'afternoon' and self.scheduler.settings['afternoon_balancing']['enabled']:
@@ -659,7 +707,7 @@ class ShiftAssigner:
                 
                 # If adding this afternoon shift would exceed the limit, refuse
                 if consecutive_afternoons >= max_consecutive:
-                    return False
+                    return False, f"would exceed max consecutive afternoons ({consecutive_afternoons} >= {max_consecutive})"
             
             # NEW: Check weekly afternoon shift limit
             max_weekly = self.scheduler.settings['afternoon_balancing'].get('max_afternoons_per_week', 0)
@@ -679,7 +727,7 @@ class ShiftAssigner:
                 
                 # If adding this afternoon shift would exceed the weekly limit, refuse
                 if afternoons_this_week >= max_weekly:
-                    return False
+                    return False, f"would exceed max weekly afternoons ({afternoons_this_week} >= {max_weekly})"
         
         # Check forbidden shifts - for MP shift, check both M and P
         # This now includes vacation-generated forbidden shifts
@@ -688,9 +736,9 @@ class ShiftAssigner:
                 if shift == 'mp':
                     # MP shift is forbidden if either M or P is forbidden
                     if 'morning' in forbidden['shifts'] or 'afternoon' in forbidden['shifts']:
-                        return False
+                        return False, f"MP shift forbidden (morning or afternoon forbidden on {date})"
                 elif shift in forbidden['shifts']:
-                    return False
+                    return False, f"{shift} shift forbidden on {date}"
         
         # Check forbidden weekends
         if date.weekday() >= 5:  # Weekend
@@ -699,7 +747,29 @@ class ShiftAssigner:
                     # Check if this weekend (Saturday or Sunday) is forbidden
                     weekend_start = date - timedelta(days=date.weekday() - 5)  # Get Saturday
                     if abs((weekend_start - forbidden_weekend).days) <= 1:
-                        return False
+                        return False, f"weekend work forbidden (forbidden weekend: {forbidden_weekend})"
+        
+        # NEW: Check consecutive weekend days prevention
+        if (date.weekday() >= 5 and shift != 'night' and 
+            self.scheduler.settings.get('prevent_consecutive_weekend_days', False)):
+            
+            if date.weekday() == 5:  # Saturday - check if already working Sunday
+                sunday = date + timedelta(days=1)
+                if sunday in self.scheduler.schedule[person_id]:
+                    sunday_shifts = self.scheduler.schedule[person_id][sunday]
+                    # Check if has non-night shifts on Sunday
+                    non_night_shifts = [s for s in sunday_shifts if s not in ['night', 'rest_after_night']]
+                    if non_night_shifts:
+                        return False, f"would work consecutive weekend days (Sunday {sunday} already assigned: {non_night_shifts})"
+                        
+            elif date.weekday() == 6:  # Sunday - check if already worked Saturday
+                saturday = date - timedelta(days=1)
+                if saturday in self.scheduler.schedule[person_id]:
+                    saturday_shifts = self.scheduler.schedule[person_id][saturday]
+                    # Check if has non-night shifts on Saturday
+                    non_night_shifts = [s for s in saturday_shifts if s not in ['night', 'rest_after_night']]
+                    if non_night_shifts:
+                        return False, f"would work consecutive weekend days (Saturday {saturday} already assigned: {non_night_shifts})"
         
         # STRICT CHECK: Never exceed max_weekend_days_per_month
         # But only count weekend days for non-night shifts
@@ -729,34 +799,36 @@ class ShiftAssigner:
             
             # If assigning this shift would exceed the monthly limit, refuse
             if weekend_days_this_month >= self.scheduler.settings['max_weekend_days_per_month']:
-                return False
+                return False, f"would exceed monthly weekend limit ({weekend_days_this_month} >= {self.scheduler.settings['max_weekend_days_per_month']})"
         
         # Check if already has shifts or is blocked for rest
         current_shifts = self.scheduler.schedule[person_id].get(date, [])
         if current_shifts:
             # If this date is blocked for rest after night shift, cannot assign anything
             if 'rest_after_night' in current_shifts:
-                return False
+                return False, "blocked for rest after night shift"
             
             # If trying to assign night shift but already has other shifts
             if shift == 'night':
-                return False
+                return False, f"already has other shifts on this date: {current_shifts}"
             
             # If already has night shift, cannot assign anything else
             if 'night' in current_shifts:
-                return False
+                return False, "already has night shift on this date"
             
             # If trying to assign MP shift but already has other shifts
-            if shift == 'mp' or 'mp' in current_shifts:
-                return False
+            if shift == 'mp':
+                return False, f"MP shift conflicts with existing shifts: {current_shifts}"
+            if 'mp' in current_shifts:
+                return False, "already has MP shift on this date"
             
             # On weekdays, only one shift allowed (except night which is handled above)
             if date.weekday() < 5:
-                return False
+                return False, f"weekday allows only one shift, already has: {current_shifts}"
             
             # On Saturday, allow morning + afternoon based on settings
             if date.weekday() == 5 and not self.scheduler.settings.get('weekend_morning_plus_afternoon', True):
-                return False
+                return False, f"Saturday morning+afternoon not allowed, already has: {current_shifts}"
         else:
             # If no current shifts, check if this date is blocked for rest after night shift
             if 'rest_after_night' in current_shifts:
@@ -770,7 +842,7 @@ class ShiftAssigner:
                 prev_shifts = self.scheduler.schedule[person_id][prev_date]
                 # If person worked the day before (and it's not just a rest day), cannot assign night
                 if prev_shifts and 'rest_after_night' not in prev_shifts:
-                    return False
+                    return False, f"worked day before night shift ({prev_date}): {prev_shifts}"
             
             # Check day after: must be completely free
             next_date = date + timedelta(days=1)
@@ -778,14 +850,14 @@ class ShiftAssigner:
                 next_shifts = self.scheduler.schedule[person_id][next_date]
                 # If next day already has any shifts (other than being marked for rest), cannot assign night
                 if next_shifts and 'rest_after_night' not in next_shifts:
-                    return False
+                    return False, f"day after night shift already occupied ({next_date}): {next_shifts}"
         else:
             # For non-night shifts, check if previous day had a night shift
             prev_date = date - timedelta(days=1)
             if prev_date in self.scheduler.schedule[person_id]:
                 prev_shifts = self.scheduler.schedule[person_id][prev_date]
                 if 'night' in prev_shifts:
-                    return False
+                    return False, f"day after night shift ({prev_date})"
         
         # Check continuous rest requirement
         week_start = date - timedelta(days=date.weekday())
@@ -799,9 +871,9 @@ class ShiftAssigner:
                     days_worked_this_week += 1
         
         if days_worked_this_week >= self.scheduler.settings['max_consecutive_days']:
-            return False
+            return False, f"would exceed max consecutive days ({days_worked_this_week} >= {self.scheduler.settings['max_consecutive_days']})"
         
-        return True
+        return True, "OK"
     
     def calculate_weekly_hours(self, person_id, week_start):
         """Calculate hours worked in a week starting from week_start"""
@@ -819,4 +891,5 @@ class ShiftAssigner:
                     elif shift == 'night':
                         hours += self.scheduler.settings['night_shift_hours']
                     # Don't count 'rest_after_night' as hours
+        return hours
         return hours

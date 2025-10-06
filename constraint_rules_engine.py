@@ -338,7 +338,15 @@ class ConstraintRulesEngine:
         ))
         
         self.add_constraint(StaffingConstraint(
-            "saturday_morning_staff", "morning", 0, None,
+            "saturday_morning_staff", "morning", 
+            self.settings.get('saturday_morning_staff', 1), None,
+            lambda d: d.weekday() == 5, ConstraintSeverity.CRITICAL
+        ))
+        
+        # Add Saturday MP constraint
+        saturday_mp_required = self.settings.get('saturday_mp_staff', 1)
+        self.add_constraint(StaffingConstraint(
+            "saturday_mp_staff", "mp", saturday_mp_required, saturday_mp_required,
             lambda d: d.weekday() == 5, ConstraintSeverity.CRITICAL
         ))
         
@@ -376,9 +384,19 @@ class ConstraintRulesEngine:
             "festivity_coverage", ConstraintSeverity.CRITICAL
         ))
         
+        # Consecutive weekend days constraint (if enabled)
+        if self.settings.get('prevent_consecutive_weekend_days', False):
+            self.add_custom_constraint(
+                "no_consecutive_weekend_days",
+                "No Consecutive Weekend Days",
+                "Prevent working both Saturday and Sunday in the same weekend",
+                self._check_consecutive_weekend_days,
+                ConstraintSeverity.HIGH
+            )
+        
         # Define constraint groups
-        self.constraint_groups = {
-            "staffing": ["weekday_morning_staff", "weekday_afternoon_staff", "saturday_morning_staff", "sunday_mp_staff"],
+        groups = {
+            "staffing": ["weekday_morning_staff", "weekday_afternoon_staff", "saturday_morning_staff", "saturday_mp_staff", "sunday_mp_staff"],
             "personal_limits": ["monthly_night_limits", "monthly_weekend_limits"],
             "work_hours": ["weekly_hours"],
             "forbidden": ["forbidden_shifts"],
@@ -386,6 +404,12 @@ class ConstraintRulesEngine:
             "critical": [c_id for c_id, c in self.constraints.items() if c.severity == ConstraintSeverity.CRITICAL],
             "all": list(self.constraints.keys())
         }
+        
+        # Add consecutive weekend days to appropriate groups if constraint exists
+        if "no_consecutive_weekend_days" in self.constraints:
+            groups["personal_limits"].append("no_consecutive_weekend_days")
+        
+        self.constraint_groups = groups
     
     def add_constraint(self, constraint: BaseConstraint):
         """Add a constraint to the engine"""
@@ -519,3 +543,34 @@ class ConstraintRulesEngine:
             'violations': all_violations,
             'constraint_details': {c_id: {'passed': r.passed, 'message': r.message} for c_id, r in results.items()}
         }
+    
+    def _check_consecutive_weekend_days(self, scheduler, start_date, end_date):
+        """Check that no person works both Saturday and Sunday in the same weekend"""
+        violations = []
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        
+        # Group dates by weekend (Saturday-Sunday pairs)
+        weekends = {}
+        for date in all_dates:
+            if date.weekday() == 5:  # Saturday
+                sunday = date + timedelta(days=1)
+                if sunday <= end_date:
+                    weekends[date] = sunday
+        
+        for person_id in scheduler.people.keys():
+            for saturday, sunday in weekends.items():
+                # Check if person has non-night shifts on both Saturday and Sunday
+                saturday_shifts = scheduler.schedule[person_id].get(saturday, [])
+                sunday_shifts = scheduler.schedule[person_id].get(sunday, [])
+                
+                # Filter out night shifts and rest periods
+                saturday_work = [s for s in saturday_shifts if s not in ['night', 'rest_after_night']]
+                sunday_work = [s for s in sunday_shifts if s not in ['night', 'rest_after_night']]
+                
+                if saturday_work and sunday_work:
+                    violations.append(f"Person {person_id}: works both {saturday} ({saturday_work}) and {sunday} ({sunday_work})")
+        
+        passed = len(violations) == 0
+        message = f"Checked {len(weekends)} weekends for {len(scheduler.people)} people"
+        
+        return passed, violations, message

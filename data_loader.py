@@ -193,14 +193,28 @@ class DataLoader:
                 except (ValueError, TypeError):
                     weekend_priority = 0
             
-            # Parse forbidden shifts
+            # Parse forbidden shifts from the new single column format
             forbidden_shifts = []
-            for i in range(1, 7):
-                shift_col = f'Turno vietato {i}'
-                if shift_col in row and row[shift_col] and str(row[shift_col]).strip():
-                    parsed_shift = self._parse_shift(str(row[shift_col]))
+            
+            # NEW: Handle single "Turni vietati" column
+            turni_vietati_col = 'Turni vietati'
+            if turni_vietati_col in row and row[turni_vietati_col] and str(row[turni_vietati_col]).strip():
+                turni_vietati_str = str(row[turni_vietati_col]).strip()
+                # Split by comma and parse each shift
+                shift_strings = [s.strip() for s in turni_vietati_str.split(',') if s.strip()]
+                for shift_str in shift_strings:
+                    parsed_shift = self._parse_shift(shift_str)
                     if parsed_shift:
                         forbidden_shifts.append(parsed_shift)
+            
+            # FALLBACK: Handle old multiple column format for backward compatibility
+            else:
+                for i in range(1, 7):
+                    shift_col = f'Turno vietato {i}'
+                    if shift_col in row and row[shift_col] and str(row[shift_col]).strip():
+                        parsed_shift = self._parse_shift(str(row[shift_col]))
+                        if parsed_shift:
+                            forbidden_shifts.append(parsed_shift)
             
             # Parse vacation dates (Ferie) and convert to forbidden shifts
             ferie_col = 'Ferie'
@@ -210,14 +224,28 @@ class DataLoader:
                 if log_level in ['info', 'debug']:
                     self._log('info', f"Person {person_id}: Added {len(vacation_shifts)} vacation-based forbidden shifts")
             
-            # Parse forbidden weekends
+            # Parse forbidden weekends from the new single column format
             forbidden_weekends = []
-            for i in range(1, 4):
-                weekend_col = f'Weekend vietato {i}'
-                if weekend_col in row and row[weekend_col] and str(row[weekend_col]).strip():
-                    parsed_date = self._parse_date(str(row[weekend_col]))
+            
+            # NEW: Handle single "Weekend vietati" column
+            weekend_vietati_col = 'Weekend vietati'
+            if weekend_vietati_col in row and row[weekend_vietati_col] and str(row[weekend_vietati_col]).strip():
+                weekend_vietati_str = str(row[weekend_vietati_col]).strip()
+                # Split by comma and parse each date
+                weekend_strings = [s.strip() for s in weekend_vietati_str.split(',') if s.strip()]
+                for weekend_str in weekend_strings:
+                    parsed_date = self._parse_date(weekend_str)
                     if parsed_date:
                         forbidden_weekends.append(parsed_date)
+            
+            # FALLBACK: Handle old multiple column format for backward compatibility
+            else:
+                for i in range(1, 4):
+                    weekend_col = f'Weekend vietato {i}'
+                    if weekend_col in row and row[weekend_col] and str(row[weekend_col]).strip():
+                        parsed_date = self._parse_date(str(row[weekend_col]))
+                        if parsed_date:
+                            forbidden_weekends.append(parsed_date)
             
             person_data = {
                 'forbidden_shifts': forbidden_shifts,
@@ -229,6 +257,10 @@ class DataLoader:
             
             if log_level in ['info', 'debug']:
                 self._log('info', f"Person {person_id}: Night shifts available = {night_available}, Night priority = {night_priority}, Weekend priority = {weekend_priority}")
+                if forbidden_shifts:
+                    self._log('debug', f"Person {person_id}: {len(forbidden_shifts)} forbidden shifts parsed")
+                if forbidden_weekends:
+                    self._log('debug', f"Person {person_id}: {len(forbidden_weekends)} forbidden weekends parsed")
             
             return {'id': person_id, 'data': person_data}
             
@@ -497,3 +529,9 @@ class DataLoader:
     
     def check_dependencies(self) -> Dict[str, bool]:
         """Check availability of optional dependencies"""
+        dependencies = {
+            'pandas': self.pandas_available,
+            'openpyxl': self.excel_available,
+            'xlrd': self.excel_available
+        }
+        return dependencies

@@ -1,6 +1,7 @@
 import csv
 import os
 from datetime import timedelta, datetime
+from typing import List
 
 class ExportManager:
     def __init__(self, scheduler):
@@ -56,12 +57,19 @@ class ExportManager:
                 # Check if this person is on vacation on this date
                 is_on_vacation = self._is_person_on_vacation(person_id, date)
                 
+                # Check if this person has forbidden shifts on this date
+                forbidden_shift_types = self._get_forbidden_shifts_for_date(person_id, date)
+                
                 if is_on_vacation:
                     # Person is on vacation - show F or (F)
                     if is_weekend_or_holiday:
                         person_data.append("(F)")
                     else:
                         person_data.append("F")
+                elif forbidden_shift_types:
+                    # Person has forbidden shifts - show D with shift types
+                    forbidden_display = "D " + "".join(forbidden_shift_types)
+                    person_data.append(forbidden_display)
                 else:
                     # Convert shifts to M, P, N, MP format
                     shift_codes = []
@@ -602,3 +610,33 @@ class ExportManager:
                     return True
         
         return False
+    
+    def _get_forbidden_shifts_for_date(self, person_id: str, date) -> List[str]:
+        """Get forbidden shift types for a person on a specific date (excluding vacation days)"""
+        person_data = self.scheduler.people[person_id]
+        forbidden_types = []
+        
+        for forbidden in person_data.get('forbidden_shifts', []):
+            if forbidden and forbidden['date'] == date:
+                # Skip vacation days (all MPN shifts forbidden)
+                if len(forbidden['shifts']) == 3 and all(s in forbidden['shifts'] for s in ['morning', 'afternoon', 'night']):
+                    continue  # This is handled by vacation logic
+                
+                # Convert shift names to display codes
+                shift_codes = []
+                for shift_type in forbidden['shifts']:
+                    if shift_type == 'morning':
+                        shift_codes.append('M')
+                    elif shift_type == 'afternoon':
+                        shift_codes.append('P')
+                    elif shift_type == 'night':
+                        shift_codes.append('N')
+                
+                if shift_codes:
+                    forbidden_types.extend(shift_codes)
+        
+        # Remove duplicates and sort for consistent display
+        return sorted(list(set(forbidden_types)))
+        
+        # Remove duplicates and sort for consistent display
+        return sorted(list(set(forbidden_types)))
