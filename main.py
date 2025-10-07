@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import random
 import os
+import json
+import sys
 
 # Import the new classes
 from shift_assigner import ShiftAssigner
@@ -823,16 +825,68 @@ class HospitalScheduler:
         
         return discrimination_score
 
-def main():
+def merge_settings(base_settings, overrides):
+    """Recursively merge override settings into base settings"""
+    if not overrides:
+        return base_settings
+    
+    merged = base_settings.copy() if base_settings else {}
+    
+    for key, value in overrides.items():
+        if isinstance(value, dict) and key in merged and isinstance(merged[key], dict):
+            merged[key] = merge_settings(merged[key], value)
+        else:
+            merged[key] = value
+    
+    return merged
+
+def parse_command_line_args():
+    """Parse command line arguments for settings overrides"""
+    overrides = {}
+    
+    if len(sys.argv) > 1:
+        try:
+            # Try to parse as JSON string
+            overrides = json.loads(sys.argv[1])
+        except json.JSONDecodeError:
+            # Try to parse as key=value pairs
+            for arg in sys.argv[1:]:
+                if '=' in arg:
+                    key_path, value = arg.split('=', 1)
+                    # Handle nested keys like "multi_run.max_runs=50"
+                    keys = key_path.split('.')
+                    current = overrides
+                    for k in keys[:-1]:
+                        if k not in current:
+                            current[k] = {}
+                        current = current[k]
+                    
+                    # Try to convert value to appropriate type
+                    try:
+                        if value.lower() in ['true', 'false']:
+                            current[keys[-1]] = value.lower() == 'true'
+                        elif value.isdigit():
+                            current[keys[-1]] = int(value)
+                        elif '.' in value and value.replace('.', '').isdigit():
+                            current[keys[-1]] = float(value)
+                        else:
+                            current[keys[-1]] = value
+                    except:
+                        current[keys[-1]] = value
+    
+    return overrides
+
+def main(settings_overrides=None):
     # Clear terminal at start of each run
     import os
     os.system('cls' if os.name == 'nt' else 'clear')
 
-    # Option 1: Use default configuration
-    # settings = None
-    
+    # Parse command line arguments if no overrides provided
+    if settings_overrides is None:
+        settings_overrides = parse_command_line_args()
+
     # Option 2: Use custom configuration inline (as before)
-    settings = {
+    base_settings = {
         # Staff requirements
         'min_morning_staff': 3,
         'max_afternoon_staff': 1,
@@ -949,6 +1003,9 @@ def main():
             }
         },
     }
+    
+    # Merge base settings with overrides
+    settings = merge_settings(base_settings, settings_overrides)
     
     # Option 3: Use configuration file
     config_file = None  # or 'my_config.json'
@@ -1085,4 +1142,14 @@ def main():
     scheduler._log('data_loading', 'info', "Schedule generation completed!")
 
 if __name__ == "__main__":
-    main()
+    overrides = {
+        'multi_run': {
+            'enabled': True,
+            'max_runs': 50
+        },
+        'logging': {
+            'summary_statistics': 'debug'
+        },
+        'min_morning_staff': 2
+    }
+    main(overrides)
