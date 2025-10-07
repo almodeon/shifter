@@ -64,12 +64,18 @@ class ExportManager:
                 # Check if this person is in tirocinio (training)
                 is_in_tirocinio = self._is_person_in_tirocinio(person_id, date)
                 
+                # Check if this person has prohibited weekend on this date
+                is_prohibited_weekend = self._is_prohibited_weekend(person_id, date)
+                
                 if is_on_vacation:
                     # Person is on vacation - show F or (F)
                     if is_weekend_or_holiday:
                         person_data.append("(F)")
                     else:
                         person_data.append("F")
+                elif is_prohibited_weekend:
+                    # Person has prohibited weekend - show (W)
+                    person_data.append("(D) W")
                 elif forbidden_shift_types:
                     # Person has forbidden shifts - show (D) with shift types
                     forbidden_display = "(D) " + "".join(forbidden_shift_types)
@@ -866,3 +872,39 @@ class ExportManager:
                 tirocinio_dates.append({'date': tirocinio_date})
         
         return tirocinio_dates
+    
+    def _is_prohibited_weekend(self, person_id: str, date) -> bool:
+        """Check if a person has prohibited weekend on a specific date"""
+        # Only check for weekends (Saturday = 5, Sunday = 6)
+        if date.weekday() < 5:
+            return False
+            
+        person_data = self.scheduler.people[person_id]
+        
+        # Check if person has forbidden_weekends field (not prohibited_weekends)
+        forbidden_weekends = person_data.get('forbidden_weekends', [])
+        
+        if not forbidden_weekends:
+            return False
+        
+        # Check if this date is in the forbidden weekends list
+        # The data loader stores forbidden weekends as a list of date objects
+        for forbidden_date in forbidden_weekends:
+            if forbidden_date == date:
+                return True
+            
+            # Also check if this date falls within a weekend that contains the forbidden date
+            # If forbidden_date is Saturday, also check Sunday of same weekend
+            # If forbidden_date is Sunday, also check Saturday of same weekend
+            if date.weekday() == 5:  # Current date is Saturday
+                # Check if Sunday of this weekend is forbidden
+                sunday = date + timedelta(days=1)
+                if forbidden_date == sunday:
+                    return True
+            elif date.weekday() == 6:  # Current date is Sunday
+                # Check if Saturday of this weekend is forbidden
+                saturday = date - timedelta(days=1)
+                if forbidden_date == saturday:
+                    return True
+        
+        return False

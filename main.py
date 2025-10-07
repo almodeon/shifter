@@ -894,7 +894,7 @@ def main():
         # Multi-run optimization settings
         'multi_run': {
             'enabled': True,
-            'max_runs': 1000,
+            'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
