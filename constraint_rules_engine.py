@@ -528,21 +528,6 @@ class ConstraintRulesEngine:
             'violations': all_violations,
             'constraint_details': {c_id: {'passed': r.passed, 'message': r.message} for c_id, r in results.items()}
         }
-        for result in results.values():
-            if not result.passed:
-                all_violations.extend(result.violations)
-        
-        return {
-            'summary': {
-                'total_constraints': total_constraints,
-                'passed': passed_constraints,
-                'failed': failed_constraints,
-                'pass_rate': (passed_constraints / total_constraints * 100) if total_constraints > 0 else 0
-            },
-            'by_severity': severity_summary,
-            'violations': all_violations,
-            'constraint_details': {c_id: {'passed': r.passed, 'message': r.message} for c_id, r in results.items()}
-        }
     
     def _check_consecutive_weekend_days(self, scheduler, start_date, end_date):
         """Check that no person works both Saturday and Sunday in the same weekend"""

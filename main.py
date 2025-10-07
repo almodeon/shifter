@@ -113,86 +113,6 @@ class HospitalScheduler:
     def print_config_summary(self):
         """Print configuration summary"""
         self.config.print_summary()
-        
-    @staticmethod
-    def load_people_data_from_csv(csv_file, log_level='info'):
-        """DEPRECATED: Use DataLoader.load_people_data() instead"""
-        print("⚠️  Warning: load_people_data_from_csv is deprecated. Use DataLoader.load_people_data() for better format support.")
-        loader = DataLoader()
-        return loader.load_people_data(csv_file, log_level)
-
-    @staticmethod
-    def load_night_dates_from_csv(notti_file, log_level='info'):
-        """DEPRECATED: Use DataLoader.load_night_dates() instead"""
-        print("⚠️  Warning: load_night_dates_from_csv is deprecated. Use DataLoader.load_night_dates() for better format support.")
-        loader = DataLoader()
-        return loader.load_night_dates(notti_file, log_level)
-
-    @staticmethod
-    def parse_shift(shift_str):
-        """Parse shift string like '03/10/2025 PN' into date and shift types"""
-        parts = shift_str.strip().split()
-        if len(parts) != 2:
-            return None
-        
-        date_str, shift_types = parts
-        date = HospitalScheduler.parse_date(date_str)
-        if not date:
-            return None
-        
-        shifts = []
-        for char in shift_types:
-            if char == 'M':
-                shifts.append('morning')
-            elif char == 'P':
-                shifts.append('afternoon')
-            elif char == 'N':
-                shifts.append('night')
-        
-        return {'date': date, 'shifts': shifts}
-    
-    @staticmethod  
-    def parse_date(date_str):
-        """Parse date string in DD/MM/YYYY format"""
-        try:
-            return datetime.strptime(date_str.strip(), '%d/%m/%Y').date()
-        except:
-            return None
-    
-    @staticmethod
-    def parse_vacation_dates(vacation_str, log_level='info'):
-        """Parse vacation dates string and convert to forbidden shifts"""
-        """
-        Vacation dates are treated as:
-        1. MPN (all shifts) forbidden on vacation days
-        2. Night shifts forbidden on the day BEFORE vacation (since nights extend past midnight)
-        """
-        forbidden_shifts = []
-        
-        # Split by comma and parse each date
-        date_strings = [d.strip() for d in vacation_str.split(',') if d.strip()]
-        
-        for date_str in date_strings:
-            vacation_date = HospitalScheduler.parse_date(date_str)
-            if vacation_date:
-                # 1. Forbid all shifts (MPN) on the vacation day itself
-                forbidden_shifts.append({
-                    'date': vacation_date,
-                    'shifts': ['morning', 'afternoon', 'night']
-                })
-                
-                # 2. Forbid night shift on the day BEFORE vacation
-                # (since night shift extends past midnight into vacation)
-                day_before = vacation_date - timedelta(days=1)
-                forbidden_shifts.append({
-                    'date': day_before,
-                    'shifts': ['night']
-                })
-                
-                if log_level in ['debug']:
-                    print(f"  Vacation {vacation_date}: blocked MPN on {vacation_date}, blocked N on {day_before}")
-        
-        return forbidden_shifts
 
     def generate_schedule(self, start_date, end_date):
         """Generate schedule for the given date range with optional multi-run optimization"""
@@ -434,8 +354,9 @@ class HospitalScheduler:
         return self.schedule
     
     def calculate_total_hours_for_person(self, person_id, all_dates):
-        """Calculate total hours for a person including vacation days"""
+        """Calculate total hours for a person including vacation days and tirocinio"""
         total_hours = 0
+        person = self.people[person_id]
         
         # Count shift hours
         for date in all_dates:
@@ -449,16 +370,25 @@ class HospitalScheduler:
                 elif shift == 'night':
                     total_hours += self.settings['night_shift_hours']
         
-        # Add vacation days (Ferie) - count as morning shift hours
-        ferie_col = 'Ferie'
-        if ferie_col in self.people[person_id]:
-            vacation_shifts = self.people[person_id][ferie_col]
-            for forbidden in vacation_shifts:
-                if forbidden and len(forbidden['shifts']) == 3:
-                    # This is a vacation day (all MPN shifts forbidden)
-                    vacation_date = forbidden['date']
-                    if vacation_date in all_dates:
+        # Add tirocinio hours (NEW)
+        for date in all_dates:
+            if date.weekday() < 5:  # Monday-Friday only
+                is_tirocinio_day = ('tirocinio_dates' in person and 
+                                  date in person['tirocinio_dates'])
+                
+                if is_tirocinio_day:
+                    assigned_shifts = self.schedule[person_id].get(date, [])
+                    # Person gets tirocinio morning hours UNLESS they have afternoon shift
+                    if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
                         total_hours += self.settings['morning_shift_hours']
+        
+        # Add vacation days (Ferie) - count as morning shift hours for weekdays
+        for forbidden in person.get('forbidden_shifts', []):
+            if forbidden and len(forbidden['shifts']) == 3:
+                # This is a vacation day (all MPN shifts forbidden)
+                vacation_date = forbidden['date']
+                if vacation_date in all_dates and vacation_date.weekday() < 5:  # Weekday only
+                    total_hours += self.settings['morning_shift_hours']
         
         return total_hours
 
@@ -548,18 +478,20 @@ class HospitalScheduler:
         
         total_days = (end_date - start_date).days + 1
         total_weeks = total_days / 7
+        all_dates = [start_date + timedelta(days=i) for i in range(total_days)]
         
         # Collect data for all people
         summary_data = []
         violations = []
         
         # Check monthly night shift violations for each person
-        months_in_period = set((date.year, date.month) for date in [start_date + timedelta(days=i) for i in range(total_days)])
+        months_in_period = set((date.year, date.month) for date in all_dates)
         
         for person_id in sorted(self.people.keys()):
+            person = self.people[person_id]
             dates = sorted(self.schedule[person_id].keys())
             
-            # Count shifts and calculate hours using correct method
+            # Count shifts separately (no double counting for MP)
             morning_count = 0
             afternoon_count = 0
             night_count = 0
@@ -578,7 +510,7 @@ class HospitalScheduler:
                 if night_shifts_this_month > self.settings['night_shifts_per_month']:
                     violations.append(f"Person {person_id} in {month_year[1]}/{month_year[0]}: {night_shifts_this_month} night shifts (max {self.settings['night_shifts_per_month']})")
             
-            # Count shifts properly from the schedule
+            # Count shifts properly from the schedule (separate counts, no double counting)
             for date in dates:
                 shifts = self.schedule[person_id][date]
                 is_weekend = date.weekday() >= 5
@@ -589,7 +521,7 @@ class HospitalScheduler:
                     if non_night_shifts:  # Has morning, afternoon, or mp shifts
                         weekend_days += 1
                 
-                # Count each shift type
+                # Count each shift type separately
                 for shift in shifts:
                     if shift == 'morning':
                         morning_count += 1
@@ -600,8 +532,30 @@ class HospitalScheduler:
                     elif shift == 'night':
                         night_count += 1
             
-            # Calculate total hours including vacation days
-            total_hours = self.calculate_total_hours_for_person(person_id, [start_date + timedelta(days=i) for i in range(total_days)])
+            # Count Ferie (vacation) days - weekdays only
+            ferie_count = 0
+            for forbidden in person.get('forbidden_shifts', []):
+                if forbidden and len(forbidden['shifts']) == 3:
+                    # This is a vacation day (all MPN shifts forbidden)
+                    vacation_date = forbidden['date']
+                    if vacation_date in all_dates and vacation_date.weekday() < 5:  # Weekday only
+                        ferie_count += 1
+            
+            # Count Tirocinio days (excluding days when they have afternoon shifts)
+            tirocinio_count = 0
+            for date in all_dates:
+                if date.weekday() < 5:  # Monday-Friday only
+                    is_tirocinio_day = ('tirocinio_dates' in person and 
+                                      date in person['tirocinio_dates'])
+                    
+                    if is_tirocinio_day:
+                        assigned_shifts = self.schedule[person_id].get(date, [])
+                        # Count tirocinio only if they DON'T have afternoon shift
+                        if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
+                            tirocinio_count += 1
+            
+            # Calculate total hours including vacation days and tirocinio
+            total_hours = self.calculate_total_hours_for_person(person_id, all_dates)
             
             avg_hours_per_week = total_hours / total_weeks if total_weeks > 0 else 0
             
@@ -611,31 +565,31 @@ class HospitalScheduler:
             elif avg_hours_per_week > self.settings['max_weekly_hours']:
                 violations.append(f"Person {person_id}: {avg_hours_per_week:.1f}h/week (above {self.settings['max_weekly_hours']}h maximum)")
             
-            # Display M+MP and P+MP totals for better understanding
-            total_morning_shifts = morning_count + mp_count
-            total_afternoon_shifts = afternoon_count + mp_count
-            
             summary_data.append([
                 person_id, 
                 total_hours, 
-                total_morning_shifts, 
-                total_afternoon_shifts, 
-                night_count, 
-                weekend_days, 
+                morning_count,      # M only (no MP included)
+                afternoon_count,    # P only (no MP included)
+                mp_count,           # MP only
+                night_count,        # N
+                ferie_count,        # F
+                tirocinio_count,    # T
+                weekend_days,       # Weekends
                 f"{avg_hours_per_week:.1f}"
             ])
         
-        # Print table header
-        print("┌────────┬─────────────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
-        print("│ Person │ Total Hours │  M  │  P  │  N  │ Weekends │ Avg Hours per Week  │")
-        print("├────────┼─────────────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
+        # Print table header with MP column
+        print("┌────────┬─────────────┬─────┬─────┬─────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
+        print("│ Person │ Total Hours │  M  │  P  │ MP  │  N  │  F  │  T  │ Weekends │ Avg Hours per Week  │")
+        print("├────────┼─────────────┼─────┼─────┼─────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
         
         # Print data rows
         for row in summary_data:
-            person, total_h, m, p, n, weekends, avg = row
-            print(f"│   {person:<4} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {n:<2} │    {weekends:<5} │        {avg:<12} │")
+            person, total_h, m, p, mp, n, f, t, weekends, avg = row
+            print(f"│   {person:<4} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {mp:<2} │  {n:<2} │  {f:<2} │  {t:<2} │    {weekends:<5} │        {avg:<12} │")
         
-        print("└────────┴─────────────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
+        print("└────────┴─────────────┴─────┴─────┴─────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
+        print("\nLegend: M=Morning, P=Afternoon, MP=Morning+Afternoon combined, N=Night, F=Ferie,\nT=Tirocinio, Weekends=Weekend days worked")
         
         # Print violations if any
         if violations:
@@ -730,6 +684,7 @@ def main():
         # Bias mitigation settings
         'randomize_people_order': True,
         'randomize_priority_tiebreaking': True,
+        'randomize_date_order': False, # Randomize date processing order for non-night shifts
         
         # Priority assignment settings
         'priority_assignment': {
@@ -749,7 +704,7 @@ def main():
         # Multi-run optimization settings
         'multi_run': {
             'enabled': True,
-            'max_runs': 1000,
+            'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,

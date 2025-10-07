@@ -1,5 +1,6 @@
 import csv
 import os
+import json
 from datetime import timedelta, datetime
 from typing import List
 
@@ -60,6 +61,9 @@ class ExportManager:
                 # Check if this person has forbidden shifts on this date
                 forbidden_shift_types = self._get_forbidden_shifts_for_date(person_id, date)
                 
+                # Check if this person is in tirocinio (training)
+                is_in_tirocinio = self._is_person_in_tirocinio(person_id, date)
+                
                 if is_on_vacation:
                     # Person is on vacation - show F or (F)
                     if is_weekend_or_holiday:
@@ -89,6 +93,11 @@ class ExportManager:
                             night_count += 1
                     
                     shift_str = "".join(shift_codes) if shift_codes else ""
+                    
+                    # Add tirocinio marker if person is in training
+                    if shift_str and is_in_tirocinio:
+                        shift_str = f"({shift_str}T)"
+                    
                     person_data.append(shift_str)
             
             # Find warnings for this date
@@ -120,30 +129,52 @@ class ExportManager:
                 # Add blank row
                 writer.writerow([])
                 
-                # Add statistics header in the appropriate column (after all people columns)
-                stats_header_col = 7 + len(people_ids)  # 7 base columns + people columns
-                writer.writerow([''] * stats_header_col + ['STAFF STATISTICS'])
+                # Add statistics header aligned with person columns (skip base columns but include warnings column)
+                stats_header_col = 7  # 7 base columns before person columns
+                writer.writerow([''] * stats_header_col + ['STAFF STATISTICS'] + [''] * len(people_ids))
                 writer.writerow([])
                 
                 # Get staff statistics data
                 staff_data = self._get_staff_statistics_data(start_date, end_date)
                 
-                # Create statistics rows with titles in the appropriate column
-                stats_rows = [
-                    [''] * stats_header_col + ['Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Vacation_Hours'] + [str(person_stats[2]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Morning_Shifts'] + [str(person_stats[3]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Afternoon_Shifts'] + [str(person_stats[4]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Night_Shifts'] + [str(person_stats[5]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Weekend_Days'] + [str(person_stats[6]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Avg_Hours_Per_Week'] + [str(person_stats[7]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Night_Priority'] + [str(person_stats[8]) for person_stats in staff_data] + [''],
-                    [''] * stats_header_col + ['Weekend_Priority'] + [str(person_stats[9]) for person_stats in staff_data] + ['']
-                ]
-                
-                # Write statistics rows
-                for stats_row in stats_rows:
-                    writer.writerow(stats_row)
+                # Verify we have the correct number of data points (now 13 elements: 0-12)
+                if staff_data and len(staff_data[0]) >= 13:
+                    # Create statistics rows with titles aligned with person columns
+                    stats_rows = [
+                        [''] * stats_header_col + ['Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Vacation_Hours'] + [str(person_stats[2]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Morning_Shifts'] + [str(person_stats[3]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Afternoon_Shifts'] + [str(person_stats[4]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['MP_Shifts'] + [str(person_stats[5]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Night_Shifts'] + [str(person_stats[6]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Ferie_Days'] + [str(person_stats[7]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Tirocinio_Days'] + [str(person_stats[8]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Weekend_Days'] + [str(person_stats[9]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Avg_Hours_Per_Week'] + [str(person_stats[10]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Night_Priority'] + [str(person_stats[11]) for person_stats in staff_data] + [''],
+                        [''] * stats_header_col + ['Weekend_Priority'] + [str(person_stats[12]) for person_stats in staff_data] + ['']
+                    ]
+                    
+                    # Write statistics rows
+                    for stats_row in stats_rows:
+                        writer.writerow(stats_row)
+                else:
+                    # Fallback - just write basic statistics without new columns
+                    if staff_data:
+                        stats_rows = [
+                            [''] * stats_header_col + ['Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Vacation_Hours'] + [str(person_stats[2] if len(person_stats) > 2 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Morning_Shifts'] + [str(person_stats[3] if len(person_stats) > 3 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Afternoon_Shifts'] + [str(person_stats[4] if len(person_stats) > 4 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['MP_Shifts'] + [str(person_stats[5] if len(person_stats) > 5 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Night_Shifts'] + [str(person_stats[6] if len(person_stats) > 6 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Weekend_Days'] + [str(person_stats[9] if len(person_stats) > 9 else 0) for person_stats in staff_data] + [''],
+                            [''] * stats_header_col + ['Avg_Hours_Per_Week'] + [str(person_stats[10] if len(person_stats) > 10 else "0.0") for person_stats in staff_data] + ['']
+                        ]
+                        
+                        # Write statistics rows
+                        for stats_row in stats_rows:
+                            writer.writerow(stats_row)
         
         self.logger.log('export_notifications', 'info', f"Schedule exported to {output_file}")
     
@@ -156,7 +187,9 @@ class ExportManager:
         staff_data = []
         
         for person_id in sorted(self.scheduler.people.keys()):
-            # Count shifts from schedule
+            person = self.scheduler.people[person_id]
+            
+            # Count shifts from schedule (separate counts, no double counting)
             morning_count = 0
             afternoon_count = 0
             night_count = 0
@@ -176,7 +209,7 @@ class ExportManager:
                     if non_night_shifts:
                         weekend_days += 1
                 
-                # Count each shift type and calculate hours from shifts
+                # Count each shift type separately and calculate hours from shifts
                 for shift in shifts:
                     if shift == 'morning':
                         morning_count += 1
@@ -191,41 +224,56 @@ class ExportManager:
                         night_count += 1
                         shift_hours += self.scheduler.settings['night_shift_hours']
             
-            # Calculate vacation hours (weekday vacation days count as morning shift hours)
+            # Calculate tirocinio hours and count tirocinio days (NEW)
+            tirocinio_hours = 0
+            tirocinio_count = 0
+            for date in all_dates:
+                if date.weekday() < 5:  # Monday-Friday only
+                    is_tirocinio_day = ('tirocinio_dates' in person and 
+                                      date in person['tirocinio_dates'])
+                    
+                    if is_tirocinio_day:
+                        assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
+                        # Person gets tirocinio morning hours UNLESS they have afternoon shift
+                        if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
+                            tirocinio_hours += self.scheduler.settings['morning_shift_hours']
+                            tirocinio_count += 1
+            
+            # Calculate vacation hours and count vacation days (weekday vacation days count as morning shift hours)
             vacation_hours = 0
-            person_data = self.scheduler.people[person_id]
-            for forbidden in person_data['forbidden_shifts']:
+            ferie_count = 0
+            for forbidden in person.get('forbidden_shifts', []):
                 if forbidden and len(forbidden['shifts']) == 3:
                     # This is a vacation day (all MPN shifts forbidden)
                     vacation_date = forbidden['date']
                     if vacation_date in all_dates and vacation_date.weekday() < 5:  # Monday-Friday only
                         vacation_hours += self.scheduler.settings['morning_shift_hours']
+                        ferie_count += 1
             
-            # Total hours including vacation
-            total_hours = shift_hours + vacation_hours
+            # Total hours including vacation and tirocinio
+            total_hours = shift_hours + vacation_hours + tirocinio_hours
             
             # Average hours per week
             avg_hours_per_week = total_hours / total_weeks if total_weeks > 0 else 0
             
-            # Display M+MP and P+MP totals
-            total_morning_shifts = morning_count + mp_count
-            total_afternoon_shifts = afternoon_count + mp_count
-            
             # Get priorities
-            night_priority = person_data.get('night_priority', 0)
-            weekend_priority = person_data.get('weekend_priority', 0)
+            night_priority = person.get('night_priority', 0)
+            weekend_priority = person.get('weekend_priority', 0)
             
             staff_data.append([
-                person_id,
-                total_hours,
-                vacation_hours,
-                total_morning_shifts,
-                total_afternoon_shifts,
-                night_count,
-                weekend_days,
-                f"{avg_hours_per_week:.1f}",
-                night_priority,
-                weekend_priority
+                person_id,                    # 0
+                total_hours,                  # 1
+                vacation_hours,               # 2
+                morning_count,                # 3 - M only (no MP included)
+                afternoon_count,              # 4 - P only (no MP included)
+                mp_count,                     # 5 - MP only
+                night_count,                  # 6 - N
+                ferie_count,                  # 7 - F (vacation days)
+                tirocinio_count,              # 8 - T (tirocinio days)
+                weekend_days,                 # 9
+                f"{avg_hours_per_week:.1f}",  # 10
+                night_priority,               # 11
+                weekend_priority              # 12
             ])
         
         return staff_data
@@ -243,7 +291,9 @@ class ExportManager:
         staff_data = []
         
         for person_id in sorted(self.scheduler.people.keys()):
-            # Count shifts from schedule
+            person = self.scheduler.people[person_id]
+            
+            # Count shifts from schedule (separate counts, no double counting)
             morning_count = 0
             afternoon_count = 0
             night_count = 0
@@ -263,7 +313,7 @@ class ExportManager:
                     if non_night_shifts:
                         weekend_days += 1
                 
-                # Count each shift type and calculate hours from shifts
+                # Count each shift type separately and calculate hours from shifts
                 for shift in shifts:
                     if shift == 'morning':
                         morning_count += 1
@@ -278,33 +328,48 @@ class ExportManager:
                         night_count += 1
                         shift_hours += self.scheduler.settings['night_shift_hours']
             
-            # Calculate vacation hours (weekday vacation days count as morning shift hours)
+            # Calculate tirocinio hours and count tirocinio days (NEW)
+            tirocinio_hours = 0
+            tirocinio_count = 0
+            for date in all_dates:
+                if date.weekday() < 5:  # Monday-Friday only
+                    is_tirocinio_day = ('tirocinio_dates' in person and 
+                                      date in person['tirocinio_dates'])
+                    
+                    if is_tirocinio_day:
+                        assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
+                        # Person gets tirocinio morning hours UNLESS they have afternoon shift
+                        if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
+                            tirocinio_hours += self.scheduler.settings['morning_shift_hours']
+                            tirocinio_count += 1
+            
+            # Calculate vacation hours and count vacation days (weekday vacation days count as morning shift hours)
             vacation_hours = 0
-            person_data = self.scheduler.people[person_id]
-            for forbidden in person_data['forbidden_shifts']:
+            ferie_count = 0
+            for forbidden in person.get('forbidden_shifts', []):
                 if forbidden and len(forbidden['shifts']) == 3:
                     # This is a vacation day (all MPN shifts forbidden)
                     vacation_date = forbidden['date']
                     if vacation_date in all_dates and vacation_date.weekday() < 5:  # Monday-Friday only
                         vacation_hours += self.scheduler.settings['morning_shift_hours']
+                        ferie_count += 1
             
-            # Total hours including vacation
-            total_hours = shift_hours + vacation_hours
+            # Total hours including vacation and tirocinio
+            total_hours = shift_hours + vacation_hours + tirocinio_hours
             
             # Average hours per week
             avg_hours_per_week = total_hours / total_weeks if total_weeks > 0 else 0
-            
-            # Display M+MP and P+MP totals
-            total_morning_shifts = morning_count + mp_count
-            total_afternoon_shifts = afternoon_count + mp_count
             
             staff_data.append([
                 person_id,
                 total_hours,
                 vacation_hours,
-                total_morning_shifts,
-                total_afternoon_shifts,
-                night_count,
+                morning_count,        # M only (no MP included)
+                afternoon_count,      # P only (no MP included)
+                mp_count,             # MP only
+                night_count,          # N
+                ferie_count,          # F (vacation days)
+                tirocinio_count,      # T (tirocinio days)
                 weekend_days,
                 f"{avg_hours_per_week:.1f}"
             ])
@@ -316,7 +381,10 @@ class ExportManager:
             'Vacation_Hours',
             'Morning_Shifts',
             'Afternoon_Shifts',
+            'MP_Shifts',
             'Night_Shifts',
+            'Ferie_Days',
+            'Tirocinio_Days',
             'Weekend_Days',
             'Avg_Hours_Per_Week'
         ]
@@ -467,6 +535,16 @@ class ExportManager:
         person_schedule = run['schedule'][person_id]
         
         for date, shifts in person_schedule.items():
+            # Convert date string back to date object for tirocinio check
+            if isinstance(date, str):
+                try:
+                    date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+                except:
+                    continue
+            else:
+                date_obj = date
+            
+            # Count regular shift hours
             for shift in shifts:
                 if shift == 'morning':
                     total_hours += self.scheduler.settings['morning_shift_hours']
@@ -477,6 +555,17 @@ class ExportManager:
                 elif shift == 'night':
                     total_hours += self.scheduler.settings['night_shift_hours']
                 # Don't count 'rest_after_night' as hours
+        
+            # Add tirocinio hours if applicable (NEW)
+            if date_obj.weekday() < 5:  # Monday-Friday only
+                person = self.scheduler.people.get(person_id, {})
+                is_tirocinio_day = ('tirocinio_dates' in person and 
+                                  date_obj in person['tirocinio_dates'])
+                
+                if is_tirocinio_day:
+                    # Person gets tirocinio morning hours UNLESS they have afternoon shift
+                    if 'afternoon' not in shifts and 'mp' not in shifts:
+                        total_hours += self.scheduler.settings['morning_shift_hours']
         
         # Add vacation hours if applicable
         if person_id in self.scheduler.people:
@@ -701,6 +790,64 @@ class ExportManager:
         # Remove duplicates and sort for consistent display
         return sorted(list(set(forbidden_types)))
         
-        # Remove duplicates and sort for consistent display
-        return sorted(list(set(forbidden_types)))
-        return sorted(list(set(forbidden_types)))
+    def _is_person_in_tirocinio(self, person_id: str, date) -> bool:
+        """Check if a person is in tirocinio (training) on a specific date"""
+        person_data = self.scheduler.people[person_id]
+        
+        # Check if there's a tirocinio field in the person data
+        tirocinio_data = person_data.get('tirocinio', person_data.get('Tirocinio', ''))
+        
+        if not tirocinio_data:
+            return False
+        
+        # If tirocinio_data is a string of dates (similar to vacation format)
+        if isinstance(tirocinio_data, str):
+            # Parse tirocinio dates similar to vacation dates
+            tirocinio_shifts = self._parse_tirocinio_dates(tirocinio_data)
+            for tirocinio in tirocinio_shifts:
+                if tirocinio and tirocinio['date'] == date:
+                    return True
+        
+        # If tirocinio_data is already a list of date objects or dictionaries
+        elif isinstance(tirocinio_data, list):
+            for tirocinio in tirocinio_data:
+                if tirocinio:
+                    # Handle different formats: date objects, dictionaries with date field
+                    tirocinio_date = None
+                    if hasattr(tirocinio, 'date') or isinstance(tirocinio, dict):
+                        tirocinio_date = tirocinio.get('date') if isinstance(tirocinio, dict) else tirocinio.date
+                    elif hasattr(tirocinio, 'year'):  # Direct date object
+                        tirocinio_date = tirocinio
+                    
+                    if tirocinio_date == date:
+                        return True
+        
+        return False
+    
+    def _parse_tirocinio_dates(self, tirocinio_str):
+        """Parse tirocinio dates string and convert to date objects"""
+        from datetime import datetime, timedelta
+        
+        tirocinio_dates = []
+        
+        # Split by comma and parse each date
+        date_strings = [d.strip() for d in tirocinio_str.split(',') if d.strip()]
+        
+        for date_str in date_strings:
+            # Try to parse the date
+            tirocinio_date = None
+            try:
+                # Try DD/MM/YYYY format first
+                tirocinio_date = datetime.strptime(date_str.strip(), '%d/%m/%Y').date()
+            except ValueError:
+                try:
+                    # Try YYYY-MM-DD format
+                    tirocinio_date = datetime.strptime(date_str.strip(), '%Y-%m-%d').date()
+                except ValueError:
+                    # Skip invalid date formats
+                    continue
+            
+            if tirocinio_date:
+                tirocinio_dates.append({'date': tirocinio_date})
+        
+        return tirocinio_dates
