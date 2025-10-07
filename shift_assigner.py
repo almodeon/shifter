@@ -10,10 +10,14 @@ class ShiftAssigner:
         self.afternoon_targets = {}
     
     def assign_shifts_balanced(self, dates):
-        """Balanced shift assignment algorithm - never relax constraints"""
-        people_list = list(self.scheduler.people.keys())
+        """Main shift assignment method with enhanced debugging"""
+        # Initialize assignment failures tracking
+        self.scheduler.assignment_failures = []
+        
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "=== SHIFT ASSIGNMENT DEBUG ===")
         
         # NEW: Option 1 - Randomize people order at start of scheduling
+        people_list = list(self.scheduler.people.keys())
         if self.scheduler.settings.get('randomize_people_order', False):
             random.shuffle(people_list)
             self.logger.log('night_shift_assignment', 'debug', f"Randomized people order: {people_list}")
@@ -139,6 +143,22 @@ class ShiftAssigner:
             self.ensure_minimum_hours(dates, people_list)
         else:
             self.logger.log('fill_up_minimum_hours', 'info', "\nFill-up to minimum hours is disabled - skipping third pass")
+
+        # Log summary of failures
+        if hasattr(self.scheduler, 'assignment_failures') and self.scheduler.assignment_failures:
+            failure_count = len(self.scheduler.assignment_failures)
+            self.scheduler.logger.log('shift_assignment_debug', 'info', 
+                                    f"Total assignment failures: {failure_count}")
+            
+            # Group failures by reason
+            reason_counts = {}
+            for failure in self.scheduler.assignment_failures:
+                for reason in failure['reasons']:
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "Common failure reasons:")
+            for reason, count in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True):
+                self.scheduler.logger.log('shift_assignment_debug', 'info', f"  {reason}: {count} times")
 
     def ensure_minimum_hours(self, dates, people_list):
         """Add extra morning shifts on weekdays to ensure everyone meets minimum hours"""
@@ -918,4 +938,195 @@ class ShiftAssigner:
                         hours += self.scheduler.settings['night_shift_hours']
                     # Don't count 'rest_after_night' as hours
         return hours
-        return hours
+
+    def _try_assign_shift(self, person_id, date, shift_type):
+        """Try to assign a shift to a person with detailed reason tracking"""
+        reasons = []
+        
+        # Check basic availability
+        if not self._is_person_available(person_id, date, shift_type, reasons):
+            self._log_assignment_failure(person_id, date, shift_type, reasons)
+            return False
+        
+        # Check constraints
+        if not self._check_assignment_constraints(person_id, date, shift_type, reasons):
+            self._log_assignment_failure(person_id, date, shift_type, reasons)
+            return False
+        
+        # Assignment successful
+        self._assign_shift_to_person(person_id, date, shift_type)
+        self.scheduler.logger.log('shift_assignment_debug', 'debug', 
+                                f"✅ Assigned {shift_type} to Person {person_id} on {date}")
+        return True
+
+    def _log_assignment_failure(self, person_id, date, shift_type, reasons):
+        """Log detailed reasons why a shift assignment failed"""
+        reason_text = "; ".join(reasons)
+        
+        # Log to console if debug enabled
+        self.scheduler.logger.log('shift_assignment_debug', 'debug', 
+                                f"❌ Cannot assign {shift_type} to Person {person_id} on {date}: {reason_text}")
+        
+        # Store for export
+        if not hasattr(self.scheduler, 'assignment_failures'):
+            self.scheduler.assignment_failures = []
+        
+        self.scheduler.assignment_failures.append({
+            'date': date,
+            'shift_type': shift_type,
+            'person_id': person_id,
+            'reasons': reasons,
+            'reason_text': reason_text
+        })
+
+    def _is_person_available(self, person_id, date, shift_type, reasons):
+        """Check if person is available with detailed reason tracking"""
+        person_data = self.scheduler.people[person_id]
+        
+        # Check forbidden shifts
+        for forbidden in person_data.get('forbidden_shifts', []):
+            if forbidden and forbidden['date'] == date and shift_type in forbidden['shifts']:
+                reasons.append(f"Forbidden {shift_type} shift")
+                return False
+        
+        # Check forbidden weekends
+        if date.weekday() >= 5:  # Weekend
+            for forbidden_weekend in person_data.get('forbidden_weekends', []):
+                if forbidden_weekend:
+                    weekend_start = date - timedelta(days=date.weekday() - 5)
+                    if abs((weekend_start - forbidden_weekend).days) <= 1:
+                        if shift_type in ['morning', 'afternoon', 'mp']:
+                            reasons.append(f"Forbidden weekend work")
+                            return False
+        
+        return True
+
+    def _check_assignment_constraints(self, person_id, date, shift_type, reasons):
+        """Check all assignment constraints with detailed reason tracking"""
+        # Check consecutive days
+        if not self._check_consecutive_days_constraint(person_id, date, reasons):
+            return False
+        
+        # Check rest between shifts
+        if not self._check_rest_between_shifts(person_id, date, shift_type, reasons):
+            return False
+        
+        # Check monthly limits
+        if not self._check_monthly_limits(person_id, date, shift_type, reasons):
+            return False
+        
+        # Check weekend constraints
+        if not self._check_weekend_constraints(person_id, date, shift_type, reasons):
+            return False
+        
+        return True
+
+    def _check_consecutive_days_constraint(self, person_id, date, reasons):
+        """Check consecutive days constraint"""
+        max_consecutive = self.scheduler.settings['max_consecutive_days']
+        
+        # Count consecutive days before this date
+        consecutive_days = 0
+        check_date = date - timedelta(days=1)
+        
+        while check_date in self.scheduler.schedule[person_id]:
+            shifts = self.scheduler.schedule[person_id][check_date]
+            if shifts and 'rest_after_night' not in shifts:
+                consecutive_days += 1
+                check_date -= timedelta(days=1)
+            else:
+                break
+        
+        if consecutive_days >= max_consecutive:
+            reasons.append(f"Max consecutive days ({max_consecutive}) reached")
+            return False
+        
+        return True
+
+    def _check_rest_between_shifts(self, person_id, date, shift_type, reasons):
+        """Check minimum rest between shifts"""
+        min_rest_hours = self.scheduler.settings['min_rest_hours_between_shifts']
+        
+        # Check previous day
+        prev_date = date - timedelta(days=1)
+        if prev_date in self.scheduler.schedule[person_id]:
+            prev_shifts = self.scheduler.schedule[person_id][prev_date]
+            
+            # If had afternoon shift yesterday and trying morning today
+            if 'afternoon' in prev_shifts and shift_type == 'morning':
+                if min_rest_hours > 14:  # 18:00 to 08:00 = 14 hours
+                    reasons.append(f"Insufficient rest after afternoon shift ({min_rest_hours}h required)")
+                    return False
+            
+            # If had night shift yesterday
+            if 'night' in prev_shifts:
+                if shift_type != 'rest_after_night':
+                    reasons.append("Must rest after night shift")
+                    return False
+        
+        # Check next day for night shifts
+        if shift_type == 'night':
+            next_date = date + timedelta(days=1)
+            if next_date in self.scheduler.schedule[person_id]:
+                next_shifts = self.scheduler.schedule[person_id][next_date]
+                if 'morning' in next_shifts:
+                    reasons.append("Cannot work morning after night shift")
+                    return False
+        
+        return True
+
+    def _check_monthly_limits(self, person_id, date, shift_type, reasons):
+        """Check monthly limits"""
+        if shift_type == 'night':
+            # Count nights in this month
+            month_nights = 0
+            month_start = date.replace(day=1)
+            next_month = (month_start + timedelta(days=32)).replace(day=1)
+            
+            check_date = month_start
+            while check_date < next_month:
+                if check_date in self.scheduler.schedule[person_id]:
+                    if 'night' in self.scheduler.schedule[person_id][check_date]:
+                        month_nights += 1
+                check_date += timedelta(days=1)
+            
+            max_nights = self.scheduler.settings['night_shifts_per_month']
+            if month_nights >= max_nights:
+                reasons.append(f"Monthly night limit reached ({max_nights})")
+                return False
+        
+        # Check weekend days in month
+        if date.weekday() >= 5 and shift_type in ['morning', 'afternoon', 'mp']:
+            month_weekends = self.scheduler.shift_counts[person_id]['weekend_days']
+            max_weekends = self.scheduler.settings['max_weekend_days_per_month']
+            
+            if month_weekends >= max_weekends:
+                reasons.append(f"Monthly weekend limit reached ({max_weekends})")
+                return False
+        
+        return True
+
+    def _check_weekend_constraints(self, person_id, date, shift_type, reasons):
+        """Check weekend-specific constraints"""
+        if date.weekday() >= 5:  # Weekend
+            if self.scheduler.settings['prevent_consecutive_weekend_days']:
+                # Check if already working this weekend
+                if date.weekday() == 6:  # Sunday
+                    saturday = date - timedelta(days=1)
+                    if saturday in self.scheduler.schedule[person_id]:
+                        sat_shifts = self.scheduler.schedule[person_id][saturday]
+                        non_night_shifts = [s for s in sat_shifts if s not in ['night', 'rest_after_night']]
+                        if non_night_shifts and shift_type in ['morning', 'afternoon', 'mp']:
+                            reasons.append("Already working Saturday, cannot work Sunday")
+                            return False
+                
+                elif date.weekday() == 5:  # Saturday
+                    sunday = date + timedelta(days=1)
+                    if sunday in self.scheduler.schedule[person_id]:
+                        sun_shifts = self.scheduler.schedule[person_id][sunday]
+                        non_night_shifts = [s for s in sun_shifts if s not in ['night', 'rest_after_night']]
+                        if non_night_shifts and shift_type in ['morning', 'afternoon', 'mp']:
+                            reasons.append("Already working Sunday, cannot work Saturday")
+                            return False
+        
+        return True

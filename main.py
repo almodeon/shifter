@@ -749,7 +749,7 @@ def main():
         # Multi-run optimization settings
         'multi_run': {
             'enabled': True,
-            'max_runs': 200,
+            'max_runs': 1000,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
@@ -773,7 +773,8 @@ def main():
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
             'fill_up_minimum_hours': 'error',
-            'shift_assignment_warnings': 'error',
+            'shift_assignment_warnings': 'info',
+            'shift_assignment_debug': 'info',      # NEW: Enable shift assignment debugging
             'constraint_verification': 'error',
             'schedule_display': 'error',
             'summary_statistics': 'info',
@@ -905,6 +906,10 @@ def main():
     # Export results
     scheduler.export_to_csv('schedule_output.csv', start_date, end_date)
     scheduler.export_staff_statistics_to_csv(start_date, end_date, 'staff_statistics.csv')
+    
+    # Export debug information if available
+    if hasattr(scheduler, 'assignment_failures'):
+        scheduler.export_manager.export_assignment_debug('assignment_debug.csv')
     
     # Save configuration for next time (optional)
     # scheduler.save_config('last_used_config.json')

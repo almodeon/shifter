@@ -22,9 +22,9 @@ class ExportManager:
         
         all_dates = sorted(list(all_dates))
         
-        # Create header: Date, Day, Festivity, Night_Coverage, Morning Count, Afternoon Count, Night Count, Warnings, then person columns
+        # Create header: Date, Day, Festivity, Night_Coverage, Morning Count, Afternoon Count, Night Count, then person columns, then Warnings
         people_ids = sorted(self.scheduler.people.keys())
-        header = ['Date', 'Day', 'Festivity', 'Night_Coverage', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff', 'Warnings'] + people_ids
+        header = ['Date', 'Day', 'Festivity', 'Night_Coverage', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff'] + people_ids + ['Warnings']
         
         rows = [header]
         
@@ -95,7 +95,7 @@ class ExportManager:
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%d/%m/%Y') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
             
-            # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, Warnings, then person shifts
+            # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, then person shifts, then Warnings
             row = [
                 date.strftime('%d/%m/%Y'),
                 day_name,
@@ -103,9 +103,8 @@ class ExportManager:
                 night_coverage_marker,
                 morning_count,
                 afternoon_count, 
-                night_count,
-                warnings_str
-            ] + person_data
+                night_count
+            ] + person_data + [warnings_str]
             
             rows.append(row)
         
@@ -121,25 +120,25 @@ class ExportManager:
                 # Add blank row
                 writer.writerow([])
                 
-                # Add statistics header in column H (index 7)
-                writer.writerow(['', '', '', '', '', '', '', 'STAFF STATISTICS'])
+                # Add statistics header in the appropriate column (after all people columns)
+                stats_header_col = 7 + len(people_ids)  # 7 base columns + people columns
+                writer.writerow([''] * stats_header_col + ['STAFF STATISTICS'])
                 writer.writerow([])
                 
                 # Get staff statistics data
                 staff_data = self._get_staff_statistics_data(start_date, end_date)
                 
-                # Create statistics rows with titles in column H (index 7)
-                # Columns: Date(0), Day(1), Festivity(2), Night_Coverage(3), Morning_Staff(4), Afternoon_Staff(5), Night_Staff(6), Warnings(7), then people(8+)
+                # Create statistics rows with titles in the appropriate column
                 stats_rows = [
-                    ['', '', '', '', '', '', '', 'Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Vacation_Hours'] + [str(person_stats[2]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Morning_Shifts'] + [str(person_stats[3]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Afternoon_Shifts'] + [str(person_stats[4]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Night_Shifts'] + [str(person_stats[5]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Weekend_Days'] + [str(person_stats[6]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Avg_Hours_Per_Week'] + [str(person_stats[7]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Night_Priority'] + [str(person_stats[8]) for person_stats in staff_data],
-                    ['', '', '', '', '', '', '', 'Weekend_Priority'] + [str(person_stats[9]) for person_stats in staff_data]
+                    [''] * stats_header_col + ['Total_Hours'] + [str(person_stats[1]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Vacation_Hours'] + [str(person_stats[2]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Morning_Shifts'] + [str(person_stats[3]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Afternoon_Shifts'] + [str(person_stats[4]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Night_Shifts'] + [str(person_stats[5]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Weekend_Days'] + [str(person_stats[6]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Avg_Hours_Per_Week'] + [str(person_stats[7]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Night_Priority'] + [str(person_stats[8]) for person_stats in staff_data] + [''],
+                    [''] * stats_header_col + ['Weekend_Priority'] + [str(person_stats[9]) for person_stats in staff_data] + ['']
                 ]
                 
                 # Write statistics rows
@@ -596,9 +595,73 @@ class ExportManager:
                 f'{base_filename}_constraints.csv'
             )
         
+        # Export shift assignment debug info
+        debug_file = f'{base_filename}_debug.csv'
+        self.export_assignment_debug(debug_file)
+        
         self.logger.log('export_notifications', 'info', "All exports completed successfully!")
         self.logger.log('export_notifications', 'info', "All exports completed successfully!")
     
+    def export_assignment_debug(self, output_file='assignment_debug.csv'):
+        """Export detailed shift assignment failure information"""
+        output_path = os.path.join(self.scheduler.output_dir, output_file)
+        
+        if not hasattr(self.scheduler, 'assignment_failures') or not self.scheduler.assignment_failures:
+            self.scheduler.logger.log('export_notifications', 'info', 
+                                    f"No assignment failures to export")
+            return
+        
+        try:
+            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                
+                # Header
+                writer.writerow([
+                    'Date', 'Day of Week', 'Shift Type', 'Person ID', 
+                    'Failure Reasons', 'Reason Count'
+                ])
+                
+                # Sort failures by date, then by shift type
+                sorted_failures = sorted(self.scheduler.assignment_failures, 
+                                       key=lambda x: (x['date'], x['shift_type'], x['person_id']))
+                
+                for failure in sorted_failures:
+                    day_of_week = failure['date'].strftime('%A')
+                    reason_text = '; '.join(failure['reasons'])
+                    reason_count = len(failure['reasons'])
+                    
+                    writer.writerow([
+                        failure['date'].strftime('%d/%m/%Y'),
+                        day_of_week,
+                        failure['shift_type'],
+                        failure['person_id'],
+                        reason_text,
+                        reason_count
+                    ])
+                
+                # Add summary section
+                writer.writerow([])  # Empty row
+                writer.writerow(['=== SUMMARY ==='])
+                writer.writerow(['Total Failures', len(self.scheduler.assignment_failures)])
+                
+                # Reason frequency analysis
+                reason_counts = {}
+                for failure in self.scheduler.assignment_failures:
+                    for reason in failure['reasons']:
+                        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                
+                writer.writerow([])
+                writer.writerow(['Failure Reason', 'Frequency'])
+                for reason, count in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True):
+                    writer.writerow([reason, count])
+            
+            self.scheduler.logger.log('export_notifications', 'info', 
+                                    f"📊 Assignment debug exported to {output_file} ({len(self.scheduler.assignment_failures)} failures)")
+        
+        except Exception as e:
+            self.scheduler.logger.log('export_notifications', 'error', 
+                                    f"❌ Failed to export assignment debug: {e}")
+
     def _is_person_on_vacation(self, person_id: str, date) -> bool:
         """Check if a person is on vacation on a specific date"""
         person_data = self.scheduler.people[person_id]
@@ -639,4 +702,5 @@ class ExportManager:
         return sorted(list(set(forbidden_types)))
         
         # Remove duplicates and sort for consistent display
+        return sorted(list(set(forbidden_types)))
         return sorted(list(set(forbidden_types)))
