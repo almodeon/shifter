@@ -455,7 +455,7 @@ class ExportManager:
             writer = csv.writer(file)
             
             # CSV Header - Base columns + Constraint columns + Person statistics columns
-            header = ['Rank', 'Run_ID', 'Passed_Constraints', 'Total_Constraints', 'Warnings', 'Hour_Difference']
+            header = ['Rank', 'Run_ID', 'Passed_Constraints', 'Total_Constraints', 'Warnings', 'Unassigned', 'Hour_Difference']
             
             # Add constraint columns
             for constraint in actual_constraints:
@@ -483,6 +483,7 @@ class ExportManager:
                     run['passed_count'],
                     run['total_constraints'],
                     run['warning_count'],
+                    run.get('unassigned_count', 0),  # NEW: Add unassigned count
                     run['hour_difference']
                 ]
                 

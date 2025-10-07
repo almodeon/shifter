@@ -126,12 +126,18 @@ class HospitalScheduler:
         
         # Check if desiderata enforcement is enabled
         enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', False)
+        prioritize_minimal_unassigned = self.settings['multi_run'].get('prioritize_minimal_unassigned_shifts', False)
+        
         if enforce_desiderata:
             self.logger.log('multi_run_optimization', 'info', "Desiderata enforcement: ENABLED - only compliant runs will be considered")
+        
+        if prioritize_minimal_unassigned:
+            self.logger.log('multi_run_optimization', 'info', "Minimal unassigned shifts: ENABLED - prioritizing solutions with fewest unassigned shifts")
         
         best_schedule = None
         best_constraint_results = None
         best_passed_count = -1
+        best_unassigned_count = float('inf')  # NEW: Track best unassigned count
         best_hour_difference = float('inf')
         all_runs = []
         
@@ -214,9 +220,15 @@ class HospitalScheduler:
                 
                 hour_difference = max(person_hours) - min(person_hours) if person_hours else 0
                 
-                self.logger.log('multi_run_optimization', 'debug', f"  Result: {passed_count}/{total_constraints} constraints passed, {failed_count} failed, {warning_count} warnings, {hour_difference}h difference")
+                # Calculate unassigned shifts count
+                unassigned_count = self.calculate_total_unassigned_shifts(start_date, end_date)
                 
-                # Store run results
+                self.logger.log('multi_run_optimization', 'debug', 
+                    f"  Result: {passed_count}/{total_constraints} constraints passed, "
+                    f"{failed_count} failed, {warning_count} warnings, "
+                    f"{unassigned_count} unassigned, {hour_difference}h difference")
+                
+                # Store run results with unassigned count
                 run_result = {
                     'run_id': run_id,
                     'schedule': schedule.copy(),
@@ -225,24 +237,39 @@ class HospitalScheduler:
                     'total_constraints': total_constraints,
                     'failed_count': failed_count,
                     'warning_count': warning_count,
+                    'unassigned_count': unassigned_count,  # NEW: Store unassigned count
                     'hour_difference': hour_difference,
                     'warnings': self.warnings.copy(),
                     'shift_counts': self.shift_counts.copy(),
-                    'success': passed_count == total_constraints and warning_count == 0
+                    'success': passed_count == total_constraints and warning_count == 0 and unassigned_count == 0
                 }
                 all_runs.append(run_result)
                 
-                # Check if this is the best so far (use hour difference as tiebreaker)
+                # Check if this is the best so far
                 is_better = False
-                if passed_count > best_passed_count:
-                    is_better = True
-                elif passed_count == best_passed_count and best_passed_count >= 0:
-                    # Same constraint passes - use hour difference as tiebreaker
-                    if hour_difference < best_hour_difference:
+                
+                if prioritize_minimal_unassigned:
+                    # NEW LOGIC: Prioritize minimal unassigned shifts first
+                    if unassigned_count < best_unassigned_count:
                         is_better = True
+                    elif unassigned_count == best_unassigned_count:
+                        # Same unassigned count - use existing criteria
+                        if passed_count > best_passed_count:
+                            is_better = True
+                        elif passed_count == best_passed_count and best_passed_count >= 0:
+                            if hour_difference < best_hour_difference:
+                                is_better = True
+                else:
+                    # ORIGINAL LOGIC: Prioritize constraint passes first
+                    if passed_count > best_passed_count:
+                        is_better = True
+                    elif passed_count == best_passed_count and best_passed_count >= 0:
+                        if hour_difference < best_hour_difference:
+                            is_better = True
                 
                 if is_better:
                     best_passed_count = passed_count
+                    best_unassigned_count = unassigned_count  # NEW: Track best unassigned
                     best_schedule = schedule.copy()
                     best_constraint_results = constraint_results.copy()
                     best_hour_difference = hour_difference
@@ -297,16 +324,31 @@ class HospitalScheduler:
         # Display ranking of all runs
         self.logger.log('multi_run_optimization', 'info', f"\n=== RANKING OF ALL RUNS ===")
         
-        # Sort runs by passed count (descending), then by warning count (ascending), then by hour difference (ascending)
-        sorted_runs = sorted(all_runs, key=lambda x: (-x['passed_count'], x['warning_count'], x['hour_difference']))
+        # Sort runs based on priority setting
+        if prioritize_minimal_unassigned:
+            # Sort by: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc)
+            sorted_runs = sorted(all_runs, key=lambda x: (x['unassigned_count'], -x['passed_count'], x['warning_count'], x['hour_difference']))
+            self.logger.log('multi_run_optimization', 'info', f"Best result: {best_unassigned_count} unassigned, {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
+        else:
+            # Original sorting
+            sorted_runs = sorted(all_runs, key=lambda x: (-x['passed_count'], x['warning_count'], x['hour_difference']))
+            self.logger.log('multi_run_optimization', 'info', f"Best result: {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         
-        # Short console display - just show passed constraints count
+        # Short console display - show unassigned shifts if prioritized
         if self._should_log('multi_run_optimization', 'info'):
-            print(f"{'Rank':<4} {'Run':<4} {'Passed':<8} {'Warnings':<8} {'Hr_Diff':<8}")
-            print("-" * 36)
-            
-            for rank, run in enumerate(sorted_runs, 1):
-                print(f"{rank:<4} {run['run_id']+1:<4} {run['passed_count']:<8} {run['warning_count']:<8} {run['hour_difference']:<8}")
+            if prioritize_minimal_unassigned:
+                print(f"{'Rank':<4} {'Run':<4} {'Unassigned':<10} {'Passed':<8} {'Warnings':<8} {'Hr_Diff':<8}")
+                print("-" * 46)
+                
+                for rank, run in enumerate(sorted_runs, 1):
+                    print(f"{rank:<4} {run['run_id']+1:<4} {run['unassigned_count']:<10} {run['passed_count']:<8} {run['warning_count']:<8} {run['hour_difference']:<8}")
+            else:
+                # UPDATED: Show unassigned shifts even when not prioritized
+                print(f"{'Rank':<4} {'Run':<4} {'Passed':<8} {'Warnings':<8} {'Unassigned':<10} {'Hr_Diff':<8}")
+                print("-" * 50)
+                
+                for rank, run in enumerate(sorted_runs, 1):
+                    print(f"{rank:<4} {run['run_id']+1:<4} {run['passed_count']:<8} {run['warning_count']:<8} {run['unassigned_count']:<10} {run['hour_difference']:<8}")
 
         # Export detailed ranking to CSV
         self._export_multi_run_ranking(sorted_runs)
@@ -634,6 +676,72 @@ class HospitalScheduler:
                                     return False, f"Person {person_id} assigned weekend work on forbidden weekend {forbidden_weekend}"
         
         return True, "Compliant"
+    
+    def calculate_total_unassigned_shifts(self, start_date, end_date):
+        """Calculate total number of shifts that should have been assigned but weren't"""
+        unassigned_count = 0
+        current_date = start_date
+        
+        while current_date <= end_date:
+            is_weekend = current_date.weekday() >= 5
+            is_festivity = current_date in self.festivity_dates
+            
+            if is_festivity:
+                # Festivity days need MP shifts
+                required_mp = self.settings.get('festivity_staff', 1)
+                actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
+                unassigned_count += max(0, required_mp - actual_mp)
+                
+            elif current_date.weekday() == 6:  # Sunday
+                # Sunday needs MP shifts
+                required_mp = self.settings.get('sunday_staff', 1)
+                actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
+                unassigned_count += max(0, required_mp - actual_mp)
+                
+            elif current_date.weekday() == 5:  # Saturday
+                # Saturday morning
+                required_morning = self.settings.get('saturday_morning_staff', 0)
+                actual_morning = self._count_assigned_shifts_on_date(current_date, 'morning')
+                unassigned_count += max(0, required_morning - actual_morning)
+                
+                # Saturday afternoon
+                required_afternoon = self.settings.get('saturday_afternoon_staff', 0)
+                actual_afternoon = self._count_assigned_shifts_on_date(current_date, 'afternoon')
+                unassigned_count += max(0, required_afternoon - actual_afternoon)
+                
+                # Saturday MP
+                required_mp = self.settings.get('saturday_mp_staff', 1)
+                actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
+                unassigned_count += max(0, required_mp - actual_mp)
+                
+            else:  # Weekdays
+                # Morning shifts (required)
+                required_morning = self.settings['min_morning_staff']
+                actual_morning = self._count_assigned_shifts_on_date(current_date, 'morning')
+                unassigned_count += max(0, required_morning - actual_morning)
+                
+                # Afternoon shifts (optional, but count if setting > 0)
+                required_afternoon = self.settings['max_afternoon_staff']
+                actual_afternoon = self._count_assigned_shifts_on_date(current_date, 'afternoon')
+                unassigned_count += max(0, required_afternoon - actual_afternoon)
+            
+            # Night shifts (if required)
+            if current_date in self.required_night_dates:
+                required_night = self.settings['night_staff']
+                actual_night = self._count_assigned_shifts_on_date(current_date, 'night')
+                unassigned_count += max(0, required_night - actual_night)
+            
+            current_date += timedelta(days=1)
+        
+        return unassigned_count
+
+    def _count_assigned_shifts_on_date(self, date, shift_type):
+        """Count how many people are assigned a specific shift type on a specific date"""
+        count = 0
+        for person_id in self.people.keys():
+            if shift_type in self.schedule[person_id].get(date, []):
+                count += 1
+        return count
 
 def main():
     # Clear terminal at start of each run
@@ -705,13 +813,14 @@ def main():
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': False,
+            'enabled': True,
             'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
             'show_progress_bar': True,
-            'enforce_desiderata': True  # Enforce desiderata compliance in multi-run
+            'enforce_desiderata': True,  # Enforce desiderata compliance in multi-run
+            'prioritize_minimal_unassigned_shifts': True  # Only consider solutions with minimal unassigned shifts
         },
         
         'afternoon_balancing': {
@@ -733,7 +842,7 @@ def main():
             'weekend_shift_balancing': 'debug',
             'fill_up_minimum_hours': 'error',
             'shift_assignment_warnings': 'debug',
-            'shift_assignment_debug': 'info',      # NEW: Enable shift assignment debugging
+            'shift_assignment_debug': 'info',
             'afternoon_balancing': 'debug',
             'constraint_verification': 'error',
             'schedule_display': 'error',
