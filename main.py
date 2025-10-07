@@ -749,7 +749,7 @@ def main():
         # Multi-run optimization settings
         'multi_run': {
             'enabled': True,
-            'max_runs': 1000,
+            'max_runs': 200,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
@@ -758,7 +758,7 @@ def main():
         },
         
         'afternoon_balancing': {
-            'enabled': False,           # Enable afternoon shift weekly balancing
+            'enabled': True,           # Enable afternoon shift weekly balancing
             'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
             'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
             'max_consecutive_afternoons': 1  # Maximum consecutive afternoon shifts allowed (0 = no limit)

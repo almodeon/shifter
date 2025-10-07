@@ -234,6 +234,11 @@ class ShiftAssigner:
 
     def can_add_extra_morning_shift(self, person_id, date):
         """Check if we can add an extra morning shift for this person on this date - returns (can_add, reason)"""
+        # NEW: Don't add extra shifts on tirocinio days (only afternoon allowed)
+        person = self.scheduler.people[person_id]
+        if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
+            return False, "tirocinio day (only afternoon shifts allowed)"
+        
         # Don't add extra shifts on festivity days
         if date in self.scheduler.festivity_dates:
             return False, "festivity day (only MP shifts allowed)"
@@ -256,7 +261,6 @@ class ShiftAssigner:
             return False, "already has afternoon shift on weekday"
         
         # Check forbidden shifts
-        person = self.scheduler.people[person_id]
         for forbidden in person['forbidden_shifts']:
             if forbidden and forbidden['date'] == date and 'morning' in forbidden['shifts']:
                 return False, "morning shift is forbidden on this date"
@@ -479,6 +483,15 @@ class ShiftAssigner:
                 reasons.append(f"excluded due to maximum weekend shifts ({max_allowed})")
                 eligibility_debug[person_id] = reasons
                 continue
+            
+            # NEW: Special handling for tirocinio days - prioritize afternoon shifts
+            person = self.scheduler.people[person_id]
+            is_tirocinio_day = 'tirocinio_dates' in person and date in person['tirocinio_dates']
+            
+            if is_tirocinio_day and shift != 'afternoon':
+                reasons.append(f"tirocinio day (only afternoon shifts allowed on {date})")
+                eligibility_debug[person_id] = reasons
+                continue
                 
             # Check basic shift assignment constraints
             can_assign, constraint_reason = self._check_can_assign_shift_detailed(person_id, date, shift)
@@ -557,6 +570,14 @@ class ShiftAssigner:
         def priority_score(person_id):
             week_start = date - timedelta(days=date.weekday())
             weekly_hours = self.calculate_weekly_hours(person_id, week_start)
+            
+            # NEW: High priority for people on tirocinio days for afternoon shifts
+            person = self.scheduler.people[person_id]
+            is_tirocinio_day = 'tirocinio_dates' in person and date in person['tirocinio_dates']
+            
+            if is_tirocinio_day and shift == 'afternoon':
+                # Give highest priority to people on tirocinio days for afternoon shifts
+                return (-1, weekly_hours)  # -1 ensures highest priority
             
             # Higher priority for people below minimum hours (only if weekly hours consideration is enabled)
             if shift == 'afternoon' and self.scheduler.settings['afternoon_balancing']['enabled']:
@@ -682,6 +703,11 @@ class ShiftAssigner:
     def _check_can_assign_shift_detailed(self, person_id, date, shift):
         """Check if person can be assigned to this shift with detailed reason - returns (can_assign, reason)"""
         person = self.scheduler.people[person_id]
+        
+        # NEW: Check tirocinio (training) restrictions
+        if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
+            if shift != 'afternoon':
+                return False, f"tirocinio day (only afternoon shifts allowed on {date})"
         
         # NEW: Check night shift availability
         if shift == 'night' and not person['night_available']:

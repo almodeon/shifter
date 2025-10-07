@@ -1,7 +1,7 @@
-﻿Persona,Notti,Priorita notti,Priorita weekend,Turni vietati,Weekend vietati,Ferie
-1,Y,1,1,,,
-2,Y,1,1,,,
-3,Y,1,1,,,
-4,Y,1,1,,,
-5,Y,1,0,,,
-6,Y,0,2,,,
+﻿Persona,Notti,Priorita notti,Priorita weekend,Turni vietati,Weekend vietati,Ferie,Tirocinio
+1,Y,1,1,,,, 
+2,Y,1,1,,,,
+3,Y,1,1,,,,
+4,Y,1,1,,,,
+5,Y,1,0,,,,
+6,Y,0,2,,,,

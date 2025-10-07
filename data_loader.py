@@ -193,28 +193,37 @@ class DataLoader:
                 except (ValueError, TypeError):
                     weekend_priority = 0
             
+            # Parse Tirocinio (training/internship) information and convert to dates
+            tirocinio_dates = []
+            tirocinio_col = 'Tirocinio'
+            if tirocinio_col in row and row[tirocinio_col] and str(row[tirocinio_col]).strip():
+                tirocinio_str = str(row[tirocinio_col]).strip()
+                tirocinio_dates = self._parse_tirocinio_dates(tirocinio_str, log_level)
+                if log_level in ['info', 'debug']:
+                    self._log('info', f"Person {person_id}: Added {len(tirocinio_dates)} tirocinio dates")
+            
             # Parse forbidden shifts from the new single column format
             forbidden_shifts = []
             
-            # NEW: Handle single "Turni vietati" column
+            # Handle single "Turni vietati" column
             turni_vietati_col = 'Turni vietati'
             if turni_vietati_col in row and row[turni_vietati_col] and str(row[turni_vietati_col]).strip():
                 turni_vietati_str = str(row[turni_vietati_col]).strip()
                 # Split by comma and parse each shift
                 shift_strings = [s.strip() for s in turni_vietati_str.split(',') if s.strip()]
                 for shift_str in shift_strings:
-                    parsed_shift = self._parse_shift(shift_str)
-                    if parsed_shift:
-                        forbidden_shifts.append(parsed_shift)
+                    parsed_shifts = self._parse_shift(shift_str)
+                    if parsed_shifts:
+                        forbidden_shifts.extend(parsed_shifts)
             
             # FALLBACK: Handle old multiple column format for backward compatibility
             else:
                 for i in range(1, 7):
                     shift_col = f'Turno vietato {i}'
                     if shift_col in row and row[shift_col] and str(row[shift_col]).strip():
-                        parsed_shift = self._parse_shift(str(row[shift_col]))
-                        if parsed_shift:
-                            forbidden_shifts.append(parsed_shift)
+                        parsed_shifts = self._parse_shift(str(row[shift_col]))
+                        if parsed_shifts:
+                            forbidden_shifts.extend(parsed_shifts)
             
             # Parse vacation dates (Ferie) and convert to forbidden shifts
             ferie_col = 'Ferie'
@@ -227,16 +236,30 @@ class DataLoader:
             # Parse forbidden weekends from the new single column format
             forbidden_weekends = []
             
-            # NEW: Handle single "Weekend vietati" column
+            # Handle single "Weekend vietati" column
             weekend_vietati_col = 'Weekend vietati'
             if weekend_vietati_col in row and row[weekend_vietati_col] and str(row[weekend_vietati_col]).strip():
                 weekend_vietati_str = str(row[weekend_vietati_col]).strip()
-                # Split by comma and parse each date
+                # Split by comma and parse each date or date range
                 weekend_strings = [s.strip() for s in weekend_vietati_str.split(',') if s.strip()]
                 for weekend_str in weekend_strings:
-                    parsed_date = self._parse_date(weekend_str)
-                    if parsed_date:
-                        forbidden_weekends.append(parsed_date)
+                    # Check if it's a date range
+                    if '-' in weekend_str:
+                        start_date_str, end_date_str = weekend_str.split('-', 1)
+                        start_date = self._parse_date(start_date_str.strip())
+                        end_date = self._parse_date(end_date_str.strip())
+                        
+                        if start_date and end_date:
+                            # Generate all dates in the range
+                            current_date = start_date
+                            while current_date <= end_date:
+                                forbidden_weekends.append(current_date)
+                                current_date += timedelta(days=1)
+                    else:
+                        # Single date
+                        parsed_date = self._parse_date(weekend_str)
+                        if parsed_date:
+                            forbidden_weekends.append(parsed_date)
             
             # FALLBACK: Handle old multiple column format for backward compatibility
             else:
@@ -252,11 +275,14 @@ class DataLoader:
                 'forbidden_weekends': forbidden_weekends,
                 'night_available': night_available,
                 'night_priority': night_priority,
-                'weekend_priority': weekend_priority
+                'weekend_priority': weekend_priority,
+                'tirocinio_dates': tirocinio_dates  # Changed from string to list of dates
             }
             
             if log_level in ['info', 'debug']:
                 self._log('info', f"Person {person_id}: Night shifts available = {night_available}, Night priority = {night_priority}, Weekend priority = {weekend_priority}")
+                if tirocinio_dates:
+                    self._log('debug', f"Person {person_id}: Tirocinio dates = {tirocinio_dates}")
                 if forbidden_shifts:
                     self._log('debug', f"Person {person_id}: {len(forbidden_shifts)} forbidden shifts parsed")
                 if forbidden_weekends:
@@ -267,6 +293,41 @@ class DataLoader:
         except Exception as e:
             self._log('error', f"Error parsing person row: {e}")
             return None
+        
+    def _parse_tirocinio_dates(self, tirocinio_str: str, log_level: str = 'info') -> List[datetime.date]:
+        """Parse tirocinio dates string and return list of dates. Supports ranges like '06/10/2025-17/10/2025'"""
+        tirocinio_dates = []
+        
+        try:
+            # Split by comma and parse each date or date range
+            date_strings = [d.strip() for d in tirocinio_str.split(',') if d.strip()]
+            
+            for date_str in date_strings:
+                # Check if it's a date range (contains hyphen)
+                if '-' in date_str:
+                    start_date_str, end_date_str = date_str.split('-', 1)
+                    start_date = self._parse_date(start_date_str.strip())
+                    end_date = self._parse_date(end_date_str.strip())
+                    
+                    if start_date and end_date:
+                        # Generate all dates in the range
+                        current_date = start_date
+                        while current_date <= end_date:
+                            tirocinio_dates.append(current_date)
+                            current_date += timedelta(days=1)
+                else:
+                    # Single date
+                    tirocinio_date = self._parse_date(date_str)
+                    if tirocinio_date:
+                        tirocinio_dates.append(tirocinio_date)
+                        
+                if log_level in ['debug']:
+                    self._log('debug', f"  Tirocinio dates parsed: {tirocinio_dates}")
+                        
+        except Exception as e:
+            self._log('error', f"Error parsing tirocinio dates '{tirocinio_str}': {e}")
+        
+        return tirocinio_dates
     
     def _load_nights_from_csv(self, csv_file: str, log_level: str) -> List[datetime.date]:
         """Load night dates from CSV file"""
@@ -406,18 +467,16 @@ class DataLoader:
             self._log('error', f"Error reading Excel file {excel_file}: {e}")
             return []
     
-    def _parse_shift(self, shift_str: str) -> Optional[Dict]:
-        """Parse shift string like '03/10/2025 PN' into date and shift types"""
+    def _parse_shift(self, shift_str: str) -> Optional[List[Dict]]:
+        """Parse shift string like '03/10/2025 PN' or '06/10/2025-17/10/2025 PN' into date(s) and shift types"""
         try:
             parts = shift_str.strip().split()
             if len(parts) != 2:
                 return None
             
-            date_str, shift_types = parts
-            date = self._parse_date(date_str)
-            if not date:
-                return None
+            date_part, shift_types = parts
             
+            # Parse shift types
             shifts = []
             for char in shift_types:
                 if char == 'M':
@@ -427,8 +486,35 @@ class DataLoader:
                 elif char == 'N':
                     shifts.append('night')
             
-            return {'date': date, 'shifts': shifts}
-        except:
+            if not shifts:
+                return None
+            
+            # Check if it's a date range (contains hyphen)
+            if '-' in date_part:
+                start_date_str, end_date_str = date_part.split('-', 1)
+                start_date = self._parse_date(start_date_str.strip())
+                end_date = self._parse_date(end_date_str.strip())
+                
+                if not start_date or not end_date:
+                    return None
+                
+                # Generate all dates in the range
+                result = []
+                current_date = start_date
+                while current_date <= end_date:
+                    result.append({'date': current_date, 'shifts': shifts.copy()})
+                    current_date += timedelta(days=1)
+                
+                return result
+            else:
+                # Single date
+                date = self._parse_date(date_part)
+                if not date:
+                    return None
+                
+                return [{'date': date, 'shifts': shifts}]
+                
+        except Exception:
             return None
     
     def _parse_date(self, date_str: str) -> Optional[datetime.date]:
@@ -439,16 +525,36 @@ class DataLoader:
             return None
     
     def _parse_vacation_dates(self, vacation_str: str, log_level: str = 'info') -> List[Dict]:
-        """Parse vacation dates string and convert to forbidden shifts"""
+        """Parse vacation dates string and convert to forbidden shifts. Supports ranges like '06/10/2025-17/10/2025'"""
         forbidden_shifts = []
         
         try:
-            # Split by comma and parse each date
+            # Split by comma and parse each date or date range
             date_strings = [d.strip() for d in vacation_str.split(',') if d.strip()]
             
             for date_str in date_strings:
-                vacation_date = self._parse_date(date_str)
-                if vacation_date:
+                vacation_dates = []
+                
+                # Check if it's a date range (contains hyphen)
+                if '-' in date_str:
+                    start_date_str, end_date_str = date_str.split('-', 1)
+                    start_date = self._parse_date(start_date_str.strip())
+                    end_date = self._parse_date(end_date_str.strip())
+                    
+                    if start_date and end_date:
+                        # Generate all dates in the range
+                        current_date = start_date
+                        while current_date <= end_date:
+                            vacation_dates.append(current_date)
+                            current_date += timedelta(days=1)
+                else:
+                    # Single date
+                    vacation_date = self._parse_date(date_str)
+                    if vacation_date:
+                        vacation_dates.append(vacation_date)
+                
+                # Process each vacation date
+                for vacation_date in vacation_dates:
                     # 1. Forbid all shifts (MPN) on the vacation day itself
                     forbidden_shifts.append({
                         'date': vacation_date,
@@ -464,6 +570,7 @@ class DataLoader:
                     
                     if log_level in ['debug']:
                         self._log('debug', f"  Vacation {vacation_date}: blocked MPN on {vacation_date}, blocked N on {day_before}")
+                        
         except Exception as e:
             self._log('error', f"Error parsing vacation dates '{vacation_str}': {e}")
         
@@ -479,7 +586,8 @@ class DataLoader:
                 'forbidden_weekends': [],
                 'night_available': True,
                 'night_priority': 0,
-                'weekend_priority': 0
+                'weekend_priority': 0,
+                'tirocinio_dates': []  # Changed from string to list
             }
         return people_data
     
@@ -496,7 +604,7 @@ class DataLoader:
                     errors.append(f"Invalid data structure for person {person_id}")
                     continue
                 
-                required_keys = ['forbidden_shifts', 'forbidden_weekends', 'night_available', 'night_priority', 'weekend_priority']
+                required_keys = ['forbidden_shifts', 'forbidden_weekends', 'night_available', 'night_priority', 'weekend_priority', 'tirocinio_dates']
                 for key in required_keys:
                     if key not in person_data:
                         errors.append(f"Missing '{key}' for person {person_id}")
