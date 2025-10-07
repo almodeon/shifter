@@ -127,6 +127,7 @@ class HospitalScheduler:
         # Check if desiderata enforcement is enabled
         enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', False)
         prioritize_minimal_unassigned = self.settings['multi_run'].get('prioritize_minimal_unassigned_shifts', False)
+        scoring_enabled = self.settings['multi_run'].get('person_scoring', {}).get('enabled', False)
         
         if enforce_desiderata:
             self.logger.log('multi_run_optimization', 'info', "Desiderata enforcement: ENABLED - only compliant runs will be considered")
@@ -134,11 +135,19 @@ class HospitalScheduler:
         if prioritize_minimal_unassigned:
             self.logger.log('multi_run_optimization', 'info', "Minimal unassigned shifts: ENABLED - prioritizing solutions with fewest unassigned shifts")
         
+        if scoring_enabled:
+            scoring_settings = self.settings['multi_run']['person_scoring']
+            self.logger.log('multi_run_optimization', 'info', 
+                f"Person scoring: ENABLED - coeffs: night={scoring_settings.get('night_score_coeff', 2.0)}, "
+                f"weekend={scoring_settings.get('weekend_score_coeff', 1.5)}, "
+                f"afternoon={scoring_settings.get('afternoon_score_coeff', 1.0)}")
+        
         best_schedule = None
         best_constraint_results = None
         best_passed_count = -1
-        best_unassigned_count = float('inf')  # NEW: Track best unassigned count
+        best_unassigned_count = float('inf')
         best_hour_difference = float('inf')
+        best_discrimination_score = float('inf')  # NEW: Track best discrimination score
         all_runs = []
         
         # Progress bar settings
@@ -223,12 +232,16 @@ class HospitalScheduler:
                 # Calculate unassigned shifts count
                 unassigned_count = self.calculate_total_unassigned_shifts(start_date, end_date)
                 
+                # Calculate discrimination score for this solution
+                discrimination_score = self.calculate_solution_discrimination_score(schedule, self.shift_counts)
+                
                 self.logger.log('multi_run_optimization', 'debug', 
                     f"  Result: {passed_count}/{total_constraints} constraints passed, "
                     f"{failed_count} failed, {warning_count} warnings, "
-                    f"{unassigned_count} unassigned, {hour_difference}h difference")
+                    f"{unassigned_count} unassigned, {hour_difference}h difference, "
+                    f"discrimination_score={discrimination_score:.1f}")
                 
-                # Store run results with unassigned count
+                # Store run results with discrimination score
                 run_result = {
                     'run_id': run_id,
                     'schedule': schedule.copy(),
@@ -237,8 +250,9 @@ class HospitalScheduler:
                     'total_constraints': total_constraints,
                     'failed_count': failed_count,
                     'warning_count': warning_count,
-                    'unassigned_count': unassigned_count,  # NEW: Store unassigned count
+                    'unassigned_count': unassigned_count,
                     'hour_difference': hour_difference,
+                    'discrimination_score': discrimination_score,  # NEW: Store discrimination score
                     'warnings': self.warnings.copy(),
                     'shift_counts': self.shift_counts.copy(),
                     'success': passed_count == total_constraints and warning_count == 0 and unassigned_count == 0
@@ -249,30 +263,47 @@ class HospitalScheduler:
                 is_better = False
                 
                 if prioritize_minimal_unassigned:
-                    # NEW LOGIC: Prioritize minimal unassigned shifts first
+                    # LOGIC: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc), discrimination_score (asc)
                     if unassigned_count < best_unassigned_count:
                         is_better = True
                     elif unassigned_count == best_unassigned_count:
-                        # Same unassigned count - use existing criteria
                         if passed_count > best_passed_count:
                             is_better = True
-                        elif passed_count == best_passed_count and best_passed_count >= 0:
-                            if hour_difference < best_hour_difference:
+                        elif passed_count == best_passed_count:
+                            if warning_count < len(best_warnings if 'best_warnings' in locals() else []):
                                 is_better = True
+                            elif warning_count == len(best_warnings if 'best_warnings' in locals() else []):
+                                if hour_difference < best_hour_difference:
+                                    is_better = True
+                                elif hour_difference == best_hour_difference and scoring_enabled:
+                                    # NEW: Use discrimination score as final tiebreaker
+                                    if discrimination_score < best_discrimination_score:
+                                        is_better = True
                 else:
-                    # ORIGINAL LOGIC: Prioritize constraint passes first
+                    # LOGIC: passed (desc), warnings (asc), unassigned (asc), hour_diff (asc), discrimination_score (asc)
                     if passed_count > best_passed_count:
                         is_better = True
-                    elif passed_count == best_passed_count and best_passed_count >= 0:
-                        if hour_difference < best_hour_difference:
+                    elif passed_count == best_passed_count:
+                        if warning_count < len(best_warnings if 'best_warnings' in locals() else []):
                             is_better = True
+                        elif warning_count == len(best_warnings if 'best_warnings' in locals() else []):
+                            if unassigned_count < best_unassigned_count:
+                                is_better = True
+                            elif unassigned_count == best_unassigned_count:
+                                if hour_difference < best_hour_difference:
+                                    is_better = True
+                                elif hour_difference == best_hour_difference and scoring_enabled:
+                                    # NEW: Use discrimination score as final tiebreaker
+                                    if discrimination_score < best_discrimination_score:
+                                        is_better = True
                 
                 if is_better:
                     best_passed_count = passed_count
-                    best_unassigned_count = unassigned_count  # NEW: Track best unassigned
+                    best_unassigned_count = unassigned_count
                     best_schedule = schedule.copy()
                     best_constraint_results = constraint_results.copy()
                     best_hour_difference = hour_difference
+                    best_discrimination_score = discrimination_score  # NEW: Track best discrimination score
                     # Store the best run's state
                     best_warnings = self.warnings.copy()
                     best_shift_counts = self.shift_counts.copy()
@@ -324,14 +355,26 @@ class HospitalScheduler:
         # Display ranking of all runs
         self.logger.log('multi_run_optimization', 'info', f"\n=== RANKING OF ALL RUNS ===")
         
-        # Sort runs based on priority setting
+        # Sort runs based on priority setting with discrimination score as final tiebreaker
         if prioritize_minimal_unassigned:
-            # Sort by: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc)
-            sorted_runs = sorted(all_runs, key=lambda x: (x['unassigned_count'], -x['passed_count'], x['warning_count'], x['hour_difference']))
+            # Sort by: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc), discrimination_score (asc)
+            sorted_runs = sorted(all_runs, key=lambda x: (
+                x['unassigned_count'], 
+                -x['passed_count'], 
+                x['warning_count'], 
+                x['hour_difference'],
+                x.get('discrimination_score', float('inf'))  # NEW: Add discrimination score to sort key
+            ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_unassigned_count} unassigned, {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         else:
-            # Original sorting
-            sorted_runs = sorted(all_runs, key=lambda x: (-x['passed_count'], x['warning_count'], x['hour_difference']))
+            # Sort by: passed (desc), warnings (asc), unassigned (asc), hour_diff (asc), discrimination_score (asc)
+            sorted_runs = sorted(all_runs, key=lambda x: (
+                -x['passed_count'], 
+                x['warning_count'], 
+                x['unassigned_count'],
+                x['hour_difference'],
+                x.get('discrimination_score', float('inf'))  # NEW: Add discrimination score to sort key
+            ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         
         # Short console display - show unassigned shifts if prioritized
@@ -743,6 +786,43 @@ class HospitalScheduler:
                 count += 1
         return count
 
+    def calculate_solution_discrimination_score(self, schedule, shift_counts):
+        """Calculate discrimination score using max differences between people"""
+        scoring_settings = self.settings['multi_run'].get('person_scoring', {})
+        
+        if not scoring_settings.get('enabled', False):
+            return 0  # No scoring discrimination
+        
+        night_coeff = scoring_settings.get('night_score_coeff', 2.0)
+        weekend_coeff = scoring_settings.get('weekend_score_coeff', 1.5)
+        afternoon_coeff = scoring_settings.get('afternoon_score_coeff', 1.0)
+        
+        # Collect counts for each person
+        night_counts = []
+        weekend_counts = []
+        afternoon_counts = []
+        
+        for person_id in self.people.keys():
+            counts = shift_counts.get(person_id, {'morning': 0, 'afternoon': 0, 'night': 0, 'weekend_days': 0})
+            
+            night_counts.append(counts['night'])
+            weekend_counts.append(counts['weekend_days'])
+            afternoon_counts.append(counts['afternoon'])
+        
+        # Calculate max differences
+        max_night_difference = max(night_counts) - min(night_counts) if night_counts else 0
+        max_weekend_difference = max(weekend_counts) - min(weekend_counts) if weekend_counts else 0
+        max_afternoon_difference = max(afternoon_counts) - min(afternoon_counts) if afternoon_counts else 0
+        
+        # Calculate discrimination score (lower is better - more balanced)
+        discrimination_score = (
+            max_night_difference * night_coeff +
+            max_weekend_difference * weekend_coeff +
+            max_afternoon_difference * afternoon_coeff
+        )
+        
+        return discrimination_score
+
 def main():
     # Clear terminal at start of each run
     import os
@@ -814,13 +894,19 @@ def main():
         # Multi-run optimization settings
         'multi_run': {
             'enabled': True,
-            'max_runs': 100,
+            'max_runs': 1000,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
             'show_progress_bar': True,
             'enforce_desiderata': True,  # Enforce desiderata compliance in multi-run
-            'prioritize_minimal_unassigned_shifts': True  # Only consider solutions with minimal unassigned shifts
+            'prioritize_minimal_unassigned_shifts': True,  # Only consider solutions with minimal unassigned shifts
+            'person_scoring': {
+                'enabled': True,
+                'night_score_coeff': 2.0,      # Weight for night shifts
+                'weekend_score_coeff': 2.0,    # Weight for weekend shifts
+                'afternoon_score_coeff': 1.0   # Weight for afternoon shifts
+            }
         },
         
         'afternoon_balancing': {
