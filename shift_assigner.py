@@ -10,7 +10,7 @@ class ShiftAssigner:
         self.afternoon_targets = {}
     
     def assign_shifts_balanced(self, dates):
-        """Assign shifts using balanced algorithm with configurable precedence"""
+        """Assign shifts using balanced algorithm with shift-type-first approach"""
         # Initialize assignment failures tracking
         self.scheduler.assignment_failures = []
         
@@ -20,162 +20,177 @@ class ShiftAssigner:
         people_list = list(self.scheduler.people.keys())
         if self.scheduler.settings.get('randomize_people_order', False):
             random.shuffle(people_list)
-            self.logger.log('night_shift_assignment', 'debug', f"Randomized people order: {people_list}")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', f"Randomized people order: {people_list}")
         
         # NEW: Option to randomize date order
         dates_list = list(dates)
         if self.scheduler.settings.get('randomize_date_order', False):
             random.shuffle(dates_list)
-            self.logger.log('shift_assignment_warnings', 'debug', f"Randomized date order for non-night shifts")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', f"Randomized date processing order")
         
-        # First pass: assign night shifts to ensure everyone gets exactly the required amount
-        # NOTE: Night shifts are NOT randomized - they must be assigned on specific required dates
-        self.assign_night_shifts_first(dates, people_list)
+        # PHASE 1: Assign ALL night shifts first
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 1: ASSIGNING ALL NIGHT SHIFTS ===")
+        self.assign_all_night_shifts(dates_list, people_list)
         
         # Pre-calculate afternoon targets after night shifts are assigned (for workload balancing)
         if self.scheduler.settings['workload_balancing']['enabled']:
-            self.afternoon_targets = {}
+            self.scheduler.logger.log('workload_balancing', 'info', "Pre-calculating afternoon targets after night shift assignment...")
             for person_id in people_list:
                 self.afternoon_targets[person_id] = self.calculate_adjusted_afternoon_target(person_id)
-                self.logger.log('workload_balancing', 'debug', f"Person {person_id} afternoon target: {self.afternoon_targets[person_id]:.1f}")
         
-        # Log weekend priority settings
-        if self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
-            self.logger.log('weekend_shift_balancing', 'info', "Weekend priority assignment: ENABLED (strict priority)")
-            weekend_priorities = {}
-            for person_id in people_list:
-                priority = self.scheduler.people[person_id].get('weekend_priority', 0)
-                if priority not in weekend_priorities:
-                    weekend_priorities[priority] = []
-                weekend_priorities[priority].append(person_id)
+        # PHASE 2: Assign ALL weekend shifts
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 2: ASSIGNING ALL WEEKEND SHIFTS ===")
+        self.assign_all_weekend_shifts(dates_list, people_list)
+        
+        # PHASE 3: Assign ALL afternoon shifts (with precedence option)
+        afternoon_precedence = self.scheduler.settings['afternoon_balancing'].get('give_precedence_to_afternoon_over_morning', False)
+        
+        if afternoon_precedence:
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 3: ASSIGNING ALL AFTERNOON SHIFTS (PRECEDENCE ENABLED) ===")
+            self.assign_all_afternoon_shifts(dates_list, people_list)
             
-            for priority in sorted(weekend_priorities.keys(), reverse=True):
-                self.logger.log('weekend_shift_balancing', 'info', f"  Weekend priority {priority}: {weekend_priorities[priority]}")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL MORNING SHIFTS ===")
+            self.assign_all_morning_shifts(dates_list, people_list)
         else:
-            self.logger.log('weekend_shift_balancing', 'info', "Weekend priority assignment: DISABLED")
-        
-        # Second pass: assign morning and afternoon shifts
-        # Use randomized dates_list for non-night shifts if randomization is enabled
-        for date in dates_list:
-            is_weekend = date.weekday() >= 5  # Saturday = 5, Sunday = 6
-            is_festivity = date in self.scheduler.festivity_dates
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 3: ASSIGNING ALL MORNING SHIFTS ===")
+            self.assign_all_morning_shifts(dates_list, people_list)
             
-            if is_festivity:
-                # Festivity days have only MP shift - skip all other shift types
-                shifts_needed = ['mp']
-                self.logger.log('shift_assignment_warnings', 'info', f"Festivity day {date}: scheduling MP shift only")
-            elif is_weekend:
-                if date.weekday() == 6:  # Sunday
-                    # Sunday has only MP (morning+afternoon combined) shift
-                    shifts_needed = ['mp']  # Special MP shift for Sunday
-                else:  # Saturday
-                    # Saturday has morning, optional afternoon, and optional MP shifts
-                    shifts_needed = ['morning', 'afternoon', 'mp']
-            else:
-                # Weekday shifts: determine order based on afternoon precedence setting
-                afternoon_precedence = self.scheduler.settings['afternoon_balancing'].get(
-                    'give_precedence_to_afternoon_over_morning', False)
-                
-                if afternoon_precedence:
-                    shifts_needed = ['afternoon', 'morning']  # Afternoon FIRST
-                    self.logger.log('afternoon_balancing', 'debug', 
-                        f"Afternoon precedence enabled: assigning afternoon before morning on {date}")
-                else:
-                    shifts_needed = ['morning', 'afternoon']  # Traditional order
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL AFTERNOON SHIFTS ===")
+            self.assign_all_afternoon_shifts(dates_list, people_list)
         
-            for shift in shifts_needed:
-                if shift == 'morning':
-                    # Skip morning assignment if this is a festivity day
-                    if is_festivity:
-                        continue
-                    if date.weekday() == 5:  # Saturday
-                        required_people = self.scheduler.settings.get('saturday_morning_staff', 1)
-                    elif date.weekday() == 6:  # Sunday - no separate morning
-                        continue
-                    else:  # Weekday
-                        required_people = self.scheduler.settings['min_morning_staff']
-                elif shift == 'afternoon':
-                    # Skip afternoon assignment if this is a festivity day
-                    if is_festivity:
-                        continue
-                    if date.weekday() == 5:  # Saturday
-                        required_people = self.scheduler.settings.get('saturday_afternoon_staff', 0)
-                    elif date.weekday() == 6:  # Sunday - no separate afternoon
-                        continue
-                    else:  # Weekday
-                        required_people = self.scheduler.settings['max_afternoon_staff']
-                elif shift == 'mp':  # Saturday MP, Sunday MP shift or festivity MP shift
-                    if date.weekday() == 5:  # Saturday MP
-                        required_people = self.scheduler.settings.get('saturday_mp_staff', 1)
-                    elif is_festivity:
-                        required_people = self.scheduler.settings.get('festivity_staff', 1)
-                    else:  # Sunday
-                        required_people = self.scheduler.settings.get('sunday_staff', 1)
-                
-                assigned_count = 0
-                
-                # Keep assigning until we meet requirements or run out of eligible people
-                while assigned_count < required_people:
-                    best_person = self.find_best_person_for_shift(people_list, date, shift)
-                    if best_person:
-                        self.scheduler.schedule[best_person][date].append(shift)
-                        
-                        # Log weekend priority assignment
-                        if date.weekday() >= 5 and shift in ['morning', 'afternoon', 'mp']:
-                            weekend_priority = self.scheduler.people[best_person].get('weekend_priority', 0)
-                            self.logger.log('weekend_shift_balancing', 'debug', f"Assigned weekend {shift} to person {best_person} (priority {weekend_priority}) on {date}")
-                        
-                        # Update shift counts
-                        if shift == 'mp':
-                            # MP counts as both morning and afternoon
-                            self.scheduler.shift_counts[best_person]['morning'] += 1
-                            self.scheduler.shift_counts[best_person]['afternoon'] += 1
-                        else:
-                            self.scheduler.shift_counts[best_person][shift] += 1
-                        
-                        assigned_count += 1
-                        
-                        # Track weekend days - only for non-night shifts
-                        if is_weekend and shift != 'night':
-                            # Check if this person already worked this weekend day with non-night shifts
-                            person_worked_this_weekend_day = False
-                            for existing_shift in self.scheduler.schedule[best_person][date]:
-                                if existing_shift not in ['night', 'rest_after_night'] and existing_shift != shift:
-                                    person_worked_this_weekend_day = True
-                                    break
-                            
-                            # Only increment weekend_days counter if this is their first non-night shift on this weekend day
-                            if not person_worked_this_weekend_day:
-                                self.scheduler.shift_counts[best_person]['weekend_days'] += 1
-                    else:
-                        # Add warning when shift cannot be assigned
-                        warning = f"Could not assign {shift} shift on {date.strftime('%d/%m/%Y')} - no eligible staff (assigned {assigned_count}/{required_people})"
-                        self.scheduler.warnings.append(warning)
-                        self.logger.log('shift_assignment_warnings', 'error', f"Warning: {warning}")
-                        break
-        
-        # Third pass: Add extra morning shifts to ensure everyone meets 34h minimum (if enabled)
+        # PHASE 5: Fill up to minimum hours if enabled
         if self.scheduler.settings['fill_up_to_minimum_hours']:
-            # Use original dates order for fill-up phase to maintain chronological consistency
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 5: FILLING UP TO MINIMUM HOURS ===")
             self.ensure_minimum_hours(dates, people_list)
         else:
-            self.logger.log('fill_up_minimum_hours', 'info', "\nFill-up to minimum hours is disabled - skipping third pass")
+            self.scheduler.logger.log('fill_up_minimum_hours', 'info', "Fill up to minimum hours: DISABLED")
 
         # Log summary of failures
         if hasattr(self.scheduler, 'assignment_failures') and self.scheduler.assignment_failures:
-            failure_count = len(self.scheduler.assignment_failures)
-            self.scheduler.logger.log('shift_assignment_debug', 'info', 
-                                    f"Total assignment failures: {failure_count}")
-            
-            # Group failures by reason
-            reason_counts = {}
+            self.scheduler.logger.log('shift_assignment_warnings', 'info', f"\n⚠️  Assignment failures ({len(self.scheduler.assignment_failures)}):")
             for failure in self.scheduler.assignment_failures:
-                for reason in failure['reasons']:
-                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                self.scheduler.logger.log('shift_assignment_warnings', 'info', f"   {failure}")
+
+    def assign_all_night_shifts(self, dates_list, people_list):
+        """Assign all night shifts across all dates first"""
+        night_dates = [date for date in dates_list if date in self.scheduler.required_night_dates]
+        
+        for date in night_dates:
+            required_people = self.scheduler.settings['night_staff']
+            for i in range(required_people):
+                best_person = self.find_best_person_for_shift(people_list, date, 'night')
+                if best_person:
+                    self._assign_shift(best_person, date, 'night')
+                    self.scheduler.logger.log('night_shift_assignment', 'info', f"Assigned night shift: {best_person} on {date}")
+                else:
+                    failure_msg = f"Failed to assign night shift on {date} (position {i+1})"
+                    self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
+                    self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+
+    def assign_all_weekend_shifts(self, dates_list, people_list):
+        """Assign all weekend shifts across all dates"""
+        weekend_dates = [date for date in dates_list if date.weekday() >= 5]
+        
+        for date in weekend_dates:
+            is_festivity = date in self.scheduler.festivity_dates
             
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "Common failure reasons:")
-            for reason, count in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True):
-                self.scheduler.logger.log('shift_assignment_debug', 'info', f"  {reason}: {count} times")
+            if is_festivity:
+                # Festivity days have only MP shift
+                required_people = self.scheduler.settings.get('festivity_staff', 1)
+                for i in range(required_people):
+                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'mp')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned festivity MP: {best_person} on {date}")
+                    else:
+                        # ADD THIS: Capture the failure as a warning
+                        failure_msg = f"Failed to assign festivity MP shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                        
+            elif date.weekday() == 6:  # Sunday
+                required_people = self.scheduler.settings.get('sunday_staff', 1)
+                for i in range(required_people):
+                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'mp')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Sunday MP: {best_person} on {date}")
+                    else:
+                        # ADD THIS: Capture the failure as a warning
+                        failure_msg = f"Failed to assign Sunday MP shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                        
+            else:  # Saturday
+                # Saturday morning
+                morning_staff = self.scheduler.settings.get('saturday_morning_staff', 1)
+                for i in range(morning_staff):
+                    best_person = self.find_best_person_for_shift(people_list, date, 'morning')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'morning')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Saturday morning: {best_person} on {date}")
+                    else:
+                        # ADD THIS: Capture the failure as a warning
+                        failure_msg = f"Failed to assign Saturday morning shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                
+                # Saturday afternoon (optional)
+                afternoon_staff = self.scheduler.settings.get('saturday_afternoon_staff', 0)
+                for i in range(afternoon_staff):
+                    best_person = self.find_best_person_for_shift(people_list, date, 'afternoon')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'afternoon')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Saturday afternoon: {best_person} on {date}")
+                    else:
+                        # ADD THIS: Capture the failure as a warning
+                        failure_msg = f"Failed to assign Saturday afternoon shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                
+                # Saturday MP
+                mp_staff = self.scheduler.settings.get('saturday_mp_staff', 1)
+                for i in range(mp_staff):
+                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'mp')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Saturday MP: {best_person} on {date}")
+                    else:
+                        # ADD THIS: Capture the failure as a warning
+                        failure_msg = f"Failed to assign Saturday MP shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+
+    def assign_all_afternoon_shifts(self, dates_list, people_list):
+        """Assign all afternoon shifts across all weekdays"""
+        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.festivity_dates]
+        
+        for date in weekday_dates:
+            required_people = self.scheduler.settings['max_afternoon_staff']
+            for i in range(required_people):
+                best_person = self.find_best_person_for_shift(people_list, date, 'afternoon')
+                if best_person:
+                    self._assign_shift(best_person, date, 'afternoon')
+                    self.scheduler.logger.log('afternoon_balancing', 'info', f"Assigned afternoon: {best_person} on {date}")
+                else:
+                    # Afternoon failures are not critical errors - just log at debug level
+                    self.scheduler.logger.log('afternoon_balancing', 'debug', f"Could not assign afternoon shift on {date} (position {i+1})")
+
+    def assign_all_morning_shifts(self, dates_list, people_list):
+        """Assign all morning shifts across all weekdays"""
+        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.festivity_dates]
+        
+        for date in weekday_dates:
+            required_people = self.scheduler.settings['min_morning_staff']
+            for i in range(required_people):
+                best_person = self.find_best_person_for_shift(people_list, date, 'morning')
+                if best_person:
+                    self._assign_shift(best_person, date, 'morning')
+                    self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned morning: {best_person} on {date}")
+                else:
+                    failure_msg = f"Failed to assign morning shift on {date} (position {i+1})"
+                    self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
+                    self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
     def ensure_minimum_hours(self, dates, people_list):
         """Add extra morning shifts on weekdays to ensure everyone meets minimum hours"""
@@ -549,7 +564,7 @@ class ShiftAssigner:
         return adjusted_target
 
     def find_best_person_for_shift(self, people_list, date, shift):
-        """Find the best person for a shift on a given date"""
+        """Find the best person for a specific shift on a specific date"""
         eligible_people = []
         eligibility_debug = {}  # Track reasons for ineligibility
         
@@ -645,21 +660,21 @@ class ShiftAssigner:
                 self.logger.log('shift_assignment_warnings', 'error', f"  Person {person_id}: {'; '.join(reasons)}")
             return None
         
-        # NEW: For afternoon shifts, enforce balance if enabled
+        # NEW: Apply strict weekly balance enforcement for afternoon shifts
         if (shift == 'afternoon' and 
-            self.scheduler.settings['afternoon_balancing']['enabled'] and 
             self.scheduler.settings['afternoon_balancing'].get('enforce_strict_weekly_balance', False)):
             
-            # Count afternoon shifts this week for each eligible person
-            week_start = date - timedelta(days=date.weekday())
-            week_end = week_start + timedelta(days=6)
+            # Calculate weekly afternoon counts for all eligible people
+            week_start = date - timedelta(days=date.weekday())  # Monday of this week
+            week_end = week_start + timedelta(days=6)  # Sunday of this week
             
-            # Count weekly afternoon shifts for each person
             weekly_afternoon_counts = {}
             for person_id in eligible_people:
                 weekly_count = 0
                 current_date = week_start
-                while current_date <= week_end and current_date <= date:
+                
+                # Look at the ENTIRE week (including future dates in this week)
+                while current_date <= week_end:
                     assigned_shifts = self.scheduler.schedule[person_id].get(current_date, [])
                     
                     # Count afternoon shifts
@@ -670,29 +685,33 @@ class ShiftAssigner:
                         is_weekend = current_date.weekday() >= 5
                         if not is_weekend or self.scheduler.settings['afternoon_balancing'].get('consider_weekends_afternoons', True):
                             weekly_count += 1
-                    
+                
                     current_date += timedelta(days=1)
                 
                 weekly_afternoon_counts[person_id] = weekly_count
             
-            # Apply strict weekly balance enforcement for afternoon shifts
-            if (shift == 'afternoon' and 
-                self.scheduler.settings['afternoon_balancing'].get('enforce_strict_weekly_balance', False)):
+            if weekly_afternoon_counts:
+                # Find people with minimum weekly afternoon count
+                min_weekly_afternoons = min(weekly_afternoon_counts.values())
+                balanced_eligible = [p for p in eligible_people if weekly_afternoon_counts[p] == min_weekly_afternoons]
                 
-                if weekly_afternoon_counts:  # Make sure we have data
-                    min_weekly_afternoons = min(weekly_afternoon_counts.values())  # Fixed: use weekly_afternoon_counts instead of person_weekly_afternoons
-                    balanced_eligible = [p for p in eligible_people if weekly_afternoon_counts[p] == min_weekly_afternoons]
-                    
-                    self.scheduler._log('afternoon_balancing', 'debug', 
-                        f"Afternoon strict weekly balance enforcement on {date}: "
-                        f"min_weekly={min_weekly_afternoons}, eligible={len(eligible_people)}, "
-                        f"balanced_eligible={len(balanced_eligible)}")
-                    
-                    if balanced_eligible:
-                        eligible_people = balanced_eligible
-                    else:
-                        self.scheduler._log('afternoon_balancing', 'debug', 
-                            f"No balanced eligible people found, using all eligible")
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"Strict weekly balance on {date}: min_weekly={min_weekly_afternoons}, "
+                    f"eligible={len(eligible_people)}, balanced_eligible={len(balanced_eligible)}")
+                
+                # Debug: Show actual counts for each person for this week
+                week_debug = f"Week {week_start.strftime('%Y-%m-%d')} to {week_end.strftime('%Y-%m-%d')}: "
+                counts_debug = {pid: weekly_afternoon_counts[pid] for pid in eligible_people}
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"{week_debug}Weekly afternoon counts: {counts_debug}")
+                
+                if balanced_eligible:
+                    eligible_people = balanced_eligible
+                    self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                        f"Applied strict balance filter: {len(balanced_eligible)} people with {min_weekly_afternoons} afternoon shifts this week")
+                else:
+                    self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                        f"No balanced eligible people found, using all {len(eligible_people)} eligible")
         
         # Log eligibility summary when there are eligible people
         if self.logger.should_log('shift_assignment_warnings', 'debug'):
@@ -971,7 +990,7 @@ class ShiftAssigner:
                         weekend_days_this_month += 1
                 current_month_date += timedelta(days=1)
             
-            # If assigning this shift would exceed the monthly limit, refuse
+            # If assigning this shift would exceed the limit, refuse
             if weekend_days_this_month >= self.scheduler.settings['max_weekend_days_per_month']:
                 return False, f"would exceed monthly weekend limit ({weekend_days_this_month} >= {self.scheduler.settings['max_weekend_days_per_month']})"
         
@@ -1089,3 +1108,44 @@ class ShiftAssigner:
                 # Don't count 'rest_after_night' as hours
         
         return hours
+    
+    def _assign_shift(self, person_id, date, shift):
+        """Internal method to assign a shift to a person"""
+        # Add the shift to the schedule
+        if person_id not in self.scheduler.schedule:
+            self.scheduler.schedule[person_id] = {}
+        if date not in self.scheduler.schedule[person_id]:
+            self.scheduler.schedule[person_id][date] = []
+    
+        # Add the shift if not already present
+        if shift not in self.scheduler.schedule[person_id][date]:
+            self.scheduler.schedule[person_id][date].append(shift)
+    
+        # Update shift counts
+        if person_id not in self.scheduler.shift_counts:
+            self.scheduler.shift_counts[person_id] = {
+                'morning': 0, 'afternoon': 0, 'night': 0, 'weekend_days': 0
+            }
+    
+        # Update counters based on shift type
+        if shift == 'morning':
+            self.scheduler.shift_counts[person_id]['morning'] += 1
+        elif shift == 'afternoon':
+            self.scheduler.shift_counts[person_id]['afternoon'] += 1
+        elif shift == 'night':
+            self.scheduler.shift_counts[person_id]['night'] += 1
+        elif shift == 'mp':
+            # MP counts as both morning and afternoon for weekend tracking
+            # But don't double-count in the individual counters
+            pass
+    
+        # Count weekend days (only if this is a weekend and they don't already have a weekend shift this day)
+        if date.weekday() >= 5:  # Weekend
+            existing_shifts = self.scheduler.schedule[person_id][date]
+            # Count as weekend day if this is their first non-night shift on this weekend day
+            non_night_shifts = [s for s in existing_shifts if s not in ['night', 'rest_after_night']]
+            if len(non_night_shifts) == 1:  # This is the first weekend shift for this day
+                self.scheduler.shift_counts[person_id]['weekend_days'] += 1
+    
+        self.scheduler.logger.log('shift_assignment_debug', 'debug', 
+            f"Assigned {shift} shift to person {person_id} on {date}")

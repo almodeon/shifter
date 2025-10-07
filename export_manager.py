@@ -106,9 +106,9 @@ class ExportManager:
                     person_data.append(shift_str)
             
             # Find warnings for this date
-            date_warnings = [w for w in self.scheduler.warnings if date.strftime('%d/%m/%Y') in w]
+            # Debug: Check if warnings exist
+            date_warnings = [w for w in self.scheduler.warnings if date.strftime('%Y-%m-%d') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
-            
             # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, then person shifts, then Warnings
             row = [
                 date.strftime('%d/%m/%Y'),

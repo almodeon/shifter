@@ -636,6 +636,10 @@ class HospitalScheduler:
         return True, "Compliant"
 
 def main():
+    # Clear terminal at start of each run
+    import os
+    os.system('cls' if os.name == 'nt' else 'clear')
+
     # Option 1: Use default configuration
     # settings = None
     
@@ -645,7 +649,7 @@ def main():
         'min_morning_staff': 3,
         'max_afternoon_staff': 1,
         'night_staff': 0,
-        'saturday_morning_staff': 1,
+        'saturday_morning_staff': 0,
         'saturday_afternoon_staff': 0,
         'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
         'sunday_staff': 1,
@@ -714,7 +718,6 @@ def main():
             'enabled': True,           # Enable afternoon shift weekly balancing
             'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
             'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
-            'max_consecutive_afternoons': 1,  # Maximum consecutive afternoon shifts allowed (0 = no limit)
             'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
             'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
             'give_precedence_to_afternoon_over_morning': True  # Assign afternoon shifts before morning shifts
