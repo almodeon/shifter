@@ -890,7 +890,7 @@ def main(settings_overrides=None):
         # Staff requirements
         'min_morning_staff': 3,
         'max_afternoon_staff': 1,
-        'night_staff': 0,
+        'night_staff': 1,
         'saturday_morning_staff': 0,
         'saturday_afternoon_staff': 0,
         'saturday_mp_staff': 1,        # Staff required for Saturday MP shift

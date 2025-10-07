@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hospital Scheduler</title>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
+        .form-group { margin: 15px 0; }
+        .settings-section { border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .settings-section h3 { margin-top: 0; color: #333; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="file"], input[type="number"], input[type="date"], select { 
+            width: 100%; padding: 8px; margin-bottom: 10px; 
+        }
+        input[type="checkbox"] { width: auto; margin-right: 10px; }
+        .checkbox-label { display: inline-block; font-weight: normal; }
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; cursor: pointer; }
+        button:hover { background: #005a87; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .results { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .error { background: #ffebee; color: #c62828; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .progress { background: #e3f2fd; color: #1565c0; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        .download-link { display: inline-block; background: #4caf50; color: white; padding: 8px 15px; 
+                        text-decoration: none; margin: 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>Hospital Scheduler</h1>
+    
+    <form id="schedulerForm" method="POST" enctype="multipart/form-data">
+        
+        <!-- File Uploads -->
+        <div class="settings-section">
+            <h3>📁 Data Files</h3>
+            <div class="form-group">
+                <label>People Data (CSV/XLSX):</label>
+                <input type="file" name="people_file" accept=".csv,.xlsx,.xls" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Night Dates (CSV/XLSX) - Optional:</label>
+                <input type="file" name="night_file" accept=".csv,.xlsx,.xls">
+            </div>
+            
+            <div class="form-group">
+                <label>Festivity Dates (CSV/XLSX) - Optional:</label>
+                <input type="file" name="festivity_file" accept=".csv,.xlsx,.xls">
+            </div>
+        </div>
+        
+        <!-- Date Range -->
+        <div class="settings-section">
+            <h3>📅 Schedule Period</h3>
+            <div class="two-column">
+                <div class="form-group">
+                    <label>Start Date:</label>
+                    <input type="date" name="start_date" value="{{ default_start }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label>End Date:</label>
+                    <input type="date" name="end_date" value="{{ default_end }}" required>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Staff Requirements -->
+        <div class="settings-section">
+            <h3>👥 Staff Requirements</h3>
+            <div class="two-column">
+                <div class="form-group">
+                    <label>Minimum Morning Staff:</label>
+                    <input type="number" name="min_morning_staff" value="3" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Maximum Afternoon Staff:</label>
+                    <input type="number" name="max_afternoon_staff" value="1" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Night Staff Required:</label>
+                    <input type="number" name="night_staff" value="1" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Saturday Morning Staff:</label>
+                    <input type="number" name="saturday_morning_staff" value="0" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Saturday MP Staff:</label>
+                    <input type="number" name="saturday_mp_staff" value="1" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Sunday Staff Required:</label>
+                    <input type="number" name="sunday_staff" value="1" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Festivity Staff Required:</label>
+                    <input type="number" name="festivity_staff" value="1" min="0" max="10">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Work Limits -->
+        <div class="settings-section">
+            <h3>⏱️ Work Limits</h3>
+            <div class="two-column">
+                <div class="form-group">
+                    <label>Max Weekend Days per Month:</label>
+                    <input type="number" name="max_weekend_days_per_month" value="2" min="0" max="10">
+                </div>
+                
+                <div class="form-group">
+                    <label>Max Night Shifts per Month:</label>
+                    <input type="number" name="night_shifts_per_month" value="4" min="0" max="10">
+                </div>
+            </div>
+        </div>
+        
+        <!-- Optimization Settings -->
+        <div class="settings-section">
+            <h3>🎯 Optimization Settings</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="multi_run_enabled" checked> 
+                    <span class="checkbox-label">Enable Multi-run Optimization</span>
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>Maximum Runs:</label>
+                <input type="number" name="max_runs" value="100" min="1" max="1000">
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="person_scoring_enabled" checked> 
+                    <span class="checkbox-label">Enable Person Scoring (better balance)</span>
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="afternoon_balancing_enabled" checked> 
+                    <span class="checkbox-label">Enable Afternoon Balancing</span>
+                </label>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <button type="submit" id="runButton">Generate Schedule</button>
+        </div>
+    </form>
+    
+    <!-- Status Display -->
+    {% if status.running %}
+    <div class="progress">
+        <strong>Processing...</strong><br>
+        {{ status.progress }}
+        <script>setTimeout(function(){ location.reload(); }, 2000);</script>
+    </div>
+    {% endif %}
+    
+    {% if status.error %}
+    <div class="error">
+        <strong>Error:</strong> {{ status.error }}
+    </div>
+    {% endif %}
+    
+    {% if status.results %}
+    <div class="results">
+        <h3>Results</h3>
+        <p><strong>Schedule generated successfully!</strong></p>
+        <p>{{ status.results.summary }}</p>
+        
+        <h4>Download Files:</h4>
+        {% for file in status.results.files %}
+        <a href="/download/{{ file.name }}" class="download-link">{{ file.display_name }}</a>
+        {% endfor %}
+        
+        {% if status.results.warnings %}
+        <h4>Warnings:</h4>
+        <ul>
+        {% for warning in status.results.warnings %}
+        <li>{{ warning }}</li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <script>
+        document.getElementById('schedulerForm').onsubmit = function(e) {
+            document.getElementById('runButton').disabled = true;
+            document.getElementById('runButton').textContent = 'Processing...';
+        };
+    </script>
+</body>
+</html>
