@@ -88,10 +88,13 @@ class ConfigManager:
             
             # Afternoon shift balancing
             'afternoon_balancing': {
-                'enabled': False,           # Enable afternoon shift weekly balancing
-                'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
-                'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
-                'max_consecutive_afternoons': 1  # Maximum consecutive afternoon shifts allowed (0 = no limit)
+                'enabled': True,
+                'deprioritize_weekly_repeats': True,
+                'consider_weekly_hours': True,
+                'max_consecutive_afternoons': 1,
+                'enforce_strict_weekly_balance': True,
+                'consider_weekends_afternoons': True,  # Default to True for backward compatibility
+                'give_precedence_to_afternoon_over_morning': False  # Default to False for backward compatibility
             },
             
             # Logging/Output verbosity settings

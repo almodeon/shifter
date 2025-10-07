@@ -1,7 +1,6 @@
 import csv
 from datetime import datetime, timedelta
 from collections import defaultdict
-import itertools
 import random
 import os
 
@@ -12,7 +11,6 @@ from constraint_verifier import ConstraintVerifier
 from export_manager import ExportManager
 from config_manager import ConfigManager
 from data_loader import DataLoader
-from constraint_rules_engine import ConstraintRulesEngine, ConstraintSeverity
 
 class HospitalScheduler:
     def __init__(self, people_data=None, night_dates=None, festivity_dates=None, settings=None, config_file=None):
@@ -684,7 +682,7 @@ def main():
         # Bias mitigation settings
         'randomize_people_order': True,
         'randomize_priority_tiebreaking': True,
-        'randomize_date_order': False, # Randomize date processing order for non-night shifts
+        'randomize_date_order': True, # Randomize date processing order for non-night shifts
         
         # Priority assignment settings
         'priority_assignment': {
@@ -703,20 +701,23 @@ def main():
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': True,
+            'enabled': False,
             'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
             'silence_output': True,
             'show_progress_bar': True,
-            'enforce_desiderata': True
+            'enforce_desiderata': True  # Enforce desiderata compliance in multi-run
         },
         
         'afternoon_balancing': {
             'enabled': True,           # Enable afternoon shift weekly balancing
             'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
             'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
-            'max_consecutive_afternoons': 1  # Maximum consecutive afternoon shifts allowed (0 = no limit)
+            'max_consecutive_afternoons': 1,  # Maximum consecutive afternoon shifts allowed (0 = no limit)
+            'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
+            'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
+            'give_precedence_to_afternoon_over_morning': True  # Assign afternoon shifts before morning shifts
         },
         
         # Logging/Output verbosity settings (silence, error, info, debug)
@@ -726,15 +727,29 @@ def main():
             'multi_run_optimization': 'error',
             'night_shift_assignment': 'error',
             'workload_balancing': 'error',
-            'weekend_shift_balancing': 'error',
+            'weekend_shift_balancing': 'debug',
             'fill_up_minimum_hours': 'error',
-            'shift_assignment_warnings': 'info',
+            'shift_assignment_warnings': 'debug',
             'shift_assignment_debug': 'info',      # NEW: Enable shift assignment debugging
+            'afternoon_balancing': 'debug',
             'constraint_verification': 'error',
             'schedule_display': 'error',
             'summary_statistics': 'info',
             'export_notifications': 'info'
-        }
+        },
+        
+        # Constraint system settings (NEW)
+        'constraint_system': {
+            'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'festivity'],
+            'disabled_constraints': [],  # List of specific constraint IDs to disable
+            'custom_constraints': {},     # Custom constraint definitions
+            'severity_levels': {
+                'CRITICAL': True,   # Show critical constraint violations
+                'HIGH': True,       # Show high priority violations  
+                'MEDIUM': True,     # Show medium priority violations
+                'LOW': False        # Hide low priority violations
+            }
+        },
     }
     
     # Option 3: Use configuration file

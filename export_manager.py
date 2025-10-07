@@ -71,8 +71,8 @@ class ExportManager:
                     else:
                         person_data.append("F")
                 elif forbidden_shift_types:
-                    # Person has forbidden shifts - show D with shift types
-                    forbidden_display = "D " + "".join(forbidden_shift_types)
+                    # Person has forbidden shifts - show (D) with shift types
+                    forbidden_display = "(D) " + "".join(forbidden_shift_types)
                     person_data.append(forbidden_display)
                 else:
                     # Convert shifts to M, P, N, MP format
@@ -95,8 +95,13 @@ class ExportManager:
                     shift_str = "".join(shift_codes) if shift_codes else ""
                     
                     # Add tirocinio marker if person is in training
-                    if shift_str and is_in_tirocinio:
-                        shift_str = f"({shift_str}T)"
+                    if is_in_tirocinio:
+                        if shift_str:
+                            # Person has both training and shifts: (T) P
+                            shift_str = f"(T) {shift_str}"
+                        else:
+                            # Person has only training: (T)
+                            shift_str = "(T)"
                     
                     person_data.append(shift_str)
             
@@ -130,7 +135,7 @@ class ExportManager:
                 writer.writerow([])
                 
                 # Add statistics header aligned with person columns (skip base columns but include warnings column)
-                stats_header_col = 7  # 7 base columns before person columns
+                stats_header_col = 6  # 6 base columns before person columns
                 writer.writerow([''] * stats_header_col + ['STAFF STATISTICS'] + [''] * len(people_ids))
                 writer.writerow([])
                 
@@ -794,7 +799,15 @@ class ExportManager:
         """Check if a person is in tirocinio (training) on a specific date"""
         person_data = self.scheduler.people[person_id]
         
-        # Check if there's a tirocinio field in the person data
+        # Check if person has tirocinio_dates field (used by shift assignment logic)
+        if 'tirocinio_dates' in person_data:
+            tirocinio_dates = person_data['tirocinio_dates']
+            if isinstance(tirocinio_dates, list):
+                return date in tirocinio_dates
+            elif isinstance(tirocinio_dates, set):
+                return date in tirocinio_dates
+        
+        # Legacy check - look for tirocinio field in the person data
         tirocinio_data = person_data.get('tirocinio', person_data.get('Tirocinio', ''))
         
         if not tirocinio_data:
