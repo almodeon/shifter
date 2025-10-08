@@ -15,12 +15,12 @@ class ConfigManager:
     
     def _get_default_settings(self) -> Dict[str, Any]:
         """Return default settings configuration"""
-        return {
+        base_settings = {
             # Staff requirements
             'min_morning_staff': 3,
             'max_afternoon_staff': 1,
             'night_staff': 1,
-            'saturday_morning_staff': 1,
+            'saturday_morning_staff': 0,
             'saturday_afternoon_staff': 0,
             'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
             'sunday_staff': 1,
@@ -36,7 +36,7 @@ class ConfigManager:
             
             # Monthly and daily limits
             'max_weekend_days_per_month': 2,
-            'night_shifts_per_month': 1,
+            'night_shifts_per_month': 0,
             'max_consecutive_days': 6,
             'min_rest_hours_between_shifts': 11,
             'min_continuous_rest_hours': 24,
@@ -44,75 +44,96 @@ class ConfigManager:
             # Scheduling rules
             'weekend_morning_plus_afternoon': True,  # Saturday can have morning+afternoon
             'night_shifts_only_weekdays': False,
-            'fill_up_to_minimum_hours': False,  # Add extra shifts to reach minimum hours
-            'append_statistics_to_schedule': True,  # Append staff statistics to schedule CSV output
-            'prevent_consecutive_weekend_days': False,  # Prevent working both Saturday and Sunday in same weekend
+            'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
+            'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
             
-            # Data file names
+            # Data file names (with extensions)
             'data_files': {
-                'people_data_file': 'desiderata',     # Name for people/constraints data file (without extension)
-                'night_dates_file': 'notti',          # Name for required night dates file (without extension)
-                'festivity_dates_file': 'festivi'     # Name for festivity dates file (without extension)
+                'people_data_file': 'desiderata_default.csv',     # People/constraints data file with extension
+                'night_dates_file': 'notti_default.csv',          # Required night dates file with extension
+                'festivity_dates_file': 'festivi_default.csv',     # Festivity dates file with extension
             },
             
             # Bias mitigation settings
-            'randomize_people_order': False,  # Randomize people order at start of scheduling
-            'randomize_priority_tiebreaking': False,  # Add randomization to priority scoring
+            'randomize_people_order': True,
+            'randomize_priority_tiebreaking': True,
+            'randomize_date_order': True, # Randomize date processing order for non-night shifts
             
             # Priority assignment settings
             'priority_assignment': {
-                'night_priority_enabled': True,    # Use night priority from CSV data
-                'weekend_priority_enabled': True,  # Use weekend priority from CSV data
-                'priority_weight': 1.0             # Weight factor for priority in scoring
+                'night_priority_enabled': True,
+                'weekend_priority_enabled': True,
+                'priority_weight': 1.0
             },
             
-            # Workload balancing settings
             'workload_balancing': {
-                'enabled': False,  # Enable/disable workload balancing
-                'night_burden_coefficient': 1.5,  # Each night reduces afternoon target by this much
-                'weekend_burden_coefficient': 0.8,  # Each weekend day reduces afternoon target by this much
-                'min_afternoon_shifts': 0,  # Never go below this many afternoon shifts per person
-                'max_afternoon_compensation': 4  # Maximum afternoon shift reduction per person
+                'enabled': False,
+                'night_burden_coefficient': 1.5,
+                'weekend_burden_coefficient': 0.8,
+                'min_afternoon_shifts': 0,
+                'max_afternoon_compensation': 4
             },
             
             # Multi-run optimization settings
             'multi_run': {
-                'enabled': False,           # Enable multi-run optimization
-                'max_runs': 100,           # Maximum number of runs to attempt
-                'target_fails': 0,         # Stop early if this many or fewer constraints fail (0 = perfect solution)
-                'enable_randomization_for_multi_run': True,  # Enable randomization during multi-run
-                'silence_output': True,    # Silence all output during multi-run execution (except final results)
-                'show_progress_bar': True, # Show progress bar during multi-run execution
-                'enforce_desiderata': True  # Only consider runs that comply with forbidden shifts and vacation constraints
-            },
-            
-            # Afternoon shift balancing
-            'afternoon_balancing': {
                 'enabled': True,
-                'deprioritize_weekly_repeats': True,
-                'consider_weekly_hours': True,
-                'max_consecutive_afternoons': 1,
-                'enforce_strict_weekly_balance': True,
-                'consider_weekends_afternoons': True,  # Default to True for backward compatibility
-                'give_precedence_to_afternoon_over_morning': False  # Default to False for backward compatibility
+                'max_runs': 100,
+                'target_fails': 0,
+                'enable_randomization_for_multi_run': True,
+                'silence_output': True,
+                'show_progress_bar': True,
+                'enforce_desiderata': True,  # Enforce desiderata compliance in multi-run
+                'prioritize_minimal_unassigned_shifts': True,  # Only consider solutions with minimal unassigned shifts
+                'person_scoring': {
+                    'enabled': True,
+                    'night_score_coeff': 2.0,      # Weight for night shifts
+                    'weekend_score_coeff': 2.0,    # Weight for weekend shifts
+                    'afternoon_score_coeff': 1.0   # Weight for afternoon shifts
+                }
             },
             
-            # Logging/Output verbosity settings
+            'afternoon_balancing': {
+                'enabled': True,           # Enable afternoon shift weekly balancing
+                'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
+                'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
+                'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
+                'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
+                'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
+                'max_consecutive_afternoons': 2  # Max consecutive afternoons per person
+            },
+            
+            # Logging/Output verbosity settings (silence, error, info, debug)
             'logging': {
-                'data_loading': 'info',              # silence, error, info, debug
-                'settings_display': 'info',          # silence, error, info, debug  
-                'multi_run_optimization': 'info',    # silence, error, info, debug
-                'night_shift_assignment': 'info',    # silence, error, info, debug
-                'workload_balancing': 'debug',       # silence, error, info, debug
-                'weekend_shift_balancing': 'debug',  # silence, error, info, debug
-                'fill_up_minimum_hours': 'info',     # silence, error, info, debug
-                'shift_assignment_warnings': 'error', # silence, error, info, debug
-                'constraint_verification': 'info',   # silence, error, info, debug
-                'schedule_display': 'info',          # silence, error, info, debug
-                'summary_statistics': 'info',       # silence, error, info, debug
-                'export_notifications': 'info'      # silence, error, info, debug
-            }
+                'data_loading': 'info',              
+                'settings_display': 'info',
+                'multi_run_optimization': 'error',
+                'night_shift_assignment': 'error',
+                'workload_balancing': 'error',
+                'weekend_shift_balancing': 'debug',
+                'fill_up_minimum_hours': 'error',
+                'shift_assignment_warnings': 'debug',
+                'shift_assignment_debug': 'error',
+                'afternoon_balancing': 'error',
+                'constraint_verification': 'error',
+                'schedule_display': 'error',
+                'summary_statistics': 'info',
+                'export_notifications': 'info'
+            },
+            
+            # Constraint system settings (NEW)
+            'constraint_system': {
+                'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'festivity'],
+                'disabled_constraints': [],  # List of specific constraint IDs to disable
+                'custom_constraints': {},     # Custom constraint definitions
+                'severity_levels': {
+                    'CRITICAL': True,   # Show critical constraint violations
+                    'HIGH': True,       # Show high priority violations  
+                    'MEDIUM': True,     # Show medium priority violations
+                    'LOW': False        # Hide low priority violations
+                }
+            },
         }
+        return base_settings
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get a setting value with optional default"""
@@ -383,9 +404,9 @@ class ConfigManager:
         print(f"  Append statistics to CSV: {'YES' if self.get('append_statistics_to_schedule') else 'NO'}")
         
         print(f"\nData Files:")
-        print(f"  People data: {self.get('data_files.people_data_file')}.csv/.xlsx/.xls")
-        print(f"  Night dates: {self.get('data_files.night_dates_file')}.csv/.xlsx/.xls")
-        print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')}.csv/.xlsx/.xls")
+        print(f"  People data: {self.get('data_files.people_data_file')} (.csv/.xlsx/.xls)")
+        print(f"  Night dates: {self.get('data_files.night_dates_file')} (.csv/.xlsx/.xls)")
+        print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')} (.csv/.xlsx/.xls)")
         print(f"  Prevent consecutive weekends: {'YES' if self.get('prevent_consecutive_weekend_days') else 'NO'}")
         
         # Show validation status

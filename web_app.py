@@ -22,7 +22,28 @@ def index():
         # Set default dates (current month)
         now = datetime.now()
         default_start = f"{now.year}-{now.month:02d}-01"
-        default_end = f"{now.year}-{now.month:02d}-{now.day:02d}"
+        
+        # Last day of current month
+        import calendar
+        last_day = calendar.monthrange(now.year, now.month)[1]
+        default_end = f"{now.year}-{now.month:02d}-{last_day:02d}"
+        
+        # Next month code (commented out):
+        # # Calculate next month
+        # if now.month == 12:
+        #     next_month = 1
+        #     next_year = now.year + 1
+        # else:
+        #     next_month = now.month + 1
+        #     next_year = now.year
+        # 
+        # # First day of next month
+        # default_start = f"{next_year}-{next_month:02d}-01"
+        # 
+        # # Last day of next month
+        # import calendar
+        # last_day = calendar.monthrange(next_year, next_month)[1]
+        # default_end = f"{next_year}-{next_month:02d}-{last_day:02d}"
         
         return render_template('index.html', 
                              default_start=default_start, 
@@ -38,8 +59,23 @@ def index():
         with job_lock:
             job_status = {'running': True, 'progress': 'Starting...', 'error': None, 'results': None}
         
-        # Start background job
-        thread = threading.Thread(target=process_schedule, args=(request,))
+        # Extract all data from request BEFORE starting thread
+        request_data = {
+            'files': {},
+            'form': dict(request.form)
+        }
+        
+        # Save uploaded files to request_data
+        for key in request.files:
+            file = request.files[key]
+            if file and file.filename:
+                request_data['files'][key] = {
+                    'filename': file.filename,
+                    'content': file.read()
+                }
+        
+        # Start background job with extracted data
+        thread = threading.Thread(target=process_schedule, args=(request_data,))
         thread.daemon = True
         thread.start()
         
@@ -61,42 +97,111 @@ def process_schedule(request_data):
         # Create temporary directory for this job
         temp_dir = tempfile.mkdtemp()
         
-        # Save uploaded files
-        people_file = None
-        night_file = None
-        festivity_file = None
+        files = request_data['files']
+        form = request_data['form']
         
-        files = request_data.files
-        form = request_data.form
+        # Check debug mode
+        debug_mode = 'debug_mode_enabled' in form
         
-        if 'people_file' in files and files['people_file'].filename:
-            people_file = os.path.join(temp_dir, 'people.' + files['people_file'].filename.split('.')[-1])
-            files['people_file'].save(people_file)
+        # Initialize DataLoader (like main.py)
+        data_loader = DataLoader()
         
-        if 'night_file' in files and files['night_file'].filename:
-            night_file = os.path.join(temp_dir, 'nights.' + files['night_file'].filename.split('.')[-1])
-            files['night_file'].save(night_file)
-        
-        if 'festivity_file' in files and files['festivity_file'].filename:
-            festivity_file = os.path.join(temp_dir, 'festivities.' + files['festivity_file'].filename.split('.')[-1])
-            files['festivity_file'].save(festivity_file)
+        # Check what formats are supported
+        supported_formats = data_loader.get_supported_formats()
+        dependencies = data_loader.check_dependencies()
         
         with job_lock:
-            job_status['progress'] = 'Loading data...'
+            job_status['progress'] = 'Loading data files...'
         
-        # Load data
-        data_loader = DataLoader()
-        people_data = data_loader.load_people_data(people_file) if people_file else {}
-        night_dates = data_loader.load_night_dates(night_file) if night_file else []
-        festivity_dates = data_loader.load_festivity_dates(festivity_file) if festivity_file else []
+        if debug_mode:
+            # Get default file names directly from ConfigManager (like main.py)
+            from config_manager import ConfigManager
+            config = ConfigManager()
+            
+            people_file = config.get('data_files.people_data_file')
+            night_file = config.get('data_files.night_dates_file')
+            festivity_file = config.get('data_files.festivity_dates_file')
+            
+            # Load data files with fallback logic (like main.py)
+            people_data = data_loader.load_people_data(people_file, log_level='error')
+            
+            # If the specified file doesn't exist, try alternative formats
+            if not people_data or len(people_data) < 2:
+                file_base = os.path.splitext(people_file)[0]  # Remove extension to get base name
+                for ext in ['xlsx', 'xls', 'csv']:
+                    alt_file = f'{file_base}.{ext}'
+                    if os.path.exists(alt_file) and alt_file != people_file:  # Don't retry the same file
+                        people_data = data_loader.load_people_data(alt_file, log_level='error')
+                        if people_data and len(people_data) >= 2:
+                            break
+            
+            night_dates = data_loader.load_night_dates(night_file, log_level='error')
+            
+            # If the specified file doesn't exist, try alternative formats
+            if not night_dates:
+                file_base = os.path.splitext(night_file)[0]
+                for ext in ['xlsx', 'xls', 'csv']:
+                    alt_file = f'{file_base}.{ext}'
+                    if os.path.exists(alt_file) and alt_file != night_file:
+                        night_dates = data_loader.load_night_dates(alt_file, log_level='error')
+                        if night_dates:
+                            break
+            
+            # Load festivity dates
+            festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error')
+            
+            # If the specified file doesn't exist, try alternative formats
+            if not festivity_dates:
+                file_base = os.path.splitext(festivity_file)[0]
+                for ext in ['xlsx', 'xls', 'csv']:
+                    alt_file = f'{file_base}.{ext}'
+                    if os.path.exists(alt_file) and alt_file != festivity_file:
+                        festivity_dates = data_loader.load_festivity_dates(alt_file, log_level='error')
+                        if festivity_dates:
+                            break
+        else:
+            # Save uploaded files and load from them (existing logic)
+            people_file = None
+            night_file = None
+            festivity_file = None
+            
+            # Write files from extracted data
+            if 'people_file' in files:
+                people_file = os.path.join(temp_dir, 'people.' + files['people_file']['filename'].split('.')[-1])
+                with open(people_file, 'wb') as f:
+                    f.write(files['people_file']['content'])
+            
+            if 'night_file' in files:
+                night_file = os.path.join(temp_dir, 'nights.' + files['night_file']['filename'].split('.')[-1])
+                with open(night_file, 'wb') as f:
+                    f.write(files['night_file']['content'])
+            
+            if 'festivity_file' in files:
+                festivity_file = os.path.join(temp_dir, 'festivities.' + files['festivity_file']['filename'].split('.')[-1])
+                with open(festivity_file, 'wb') as f:
+                    f.write(files['festivity_file']['content'])
+            
+            # Load data using DataLoader
+            people_data = data_loader.load_people_data(people_file, log_level='error') if people_file else {}
+            night_dates = data_loader.load_night_dates(night_file, log_level='error') if night_file else []
+            festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error') if festivity_file else []
+            
+            # Create a new config manager for uploaded files mode
+            config = ConfigManager()
+        
+        # Validate loaded data
+        is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)
+        if not is_valid:
+            error_msg = "Data validation errors: " + "; ".join(validation_errors)
+            raise Exception(error_msg)
         
         # Parse form data
         start_date = datetime.strptime(form['start_date'], '%Y-%m-%d').date()
         end_date = datetime.strptime(form['end_date'], '%Y-%m-%d').date()
         
-        # Build settings from form with all the configurable parameters
-        settings = {
-            # Staff requirements
+        # Build ONLY the settings overrides from the web form (let ConfigManager handle defaults)
+        form_overrides = {
+            # Staff requirements (only what's exposed in the web form)
             'min_morning_staff': int(form.get('min_morning_staff', 3)),
             'max_afternoon_staff': int(form.get('max_afternoon_staff', 1)),
             'night_staff': int(form.get('night_staff', 1)),
@@ -105,15 +210,14 @@ def process_schedule(request_data):
             'sunday_staff': int(form.get('sunday_staff', 1)),
             'festivity_staff': int(form.get('festivity_staff', 1)),
             
-            # Work limits
+            # Work limits (only what's exposed in the web form)
             'max_weekend_days_per_month': int(form.get('max_weekend_days_per_month', 2)),
             'night_shifts_per_month': int(form.get('night_shifts_per_month', 4)),
             
-            # Multi-run settings
+            # Multi-run settings (only what's exposed in the web form)
             'multi_run': {
                 'enabled': 'multi_run_enabled' in form,
                 'max_runs': int(form.get('max_runs', 100)),
-                'target_fails': 0,
                 'silence_output': True,
                 'show_progress_bar': False,
                 'person_scoring': {
@@ -121,19 +225,26 @@ def process_schedule(request_data):
                 }
             },
             
-            # Afternoon balancing
+            # Afternoon balancing (only what's exposed in the web form)
             'afternoon_balancing': {
                 'enabled': 'afternoon_balancing_enabled' in form
             },
             
-            # Keep other defaults
-            'workload_balancing': {
-                'enabled': False  # Can add to form if needed
-            },
+            # Web-specific logging overrides (reduce noise in web interface)
             'logging': {
                 'data_loading': 'error',
-                'multi_run_optimization': 'error',
-                'summary_statistics': 'info',
+                'settings_display': 'error',
+                'multi_run_optimization': 'info',
+                'night_shift_assignment': 'error',
+                'workload_balancing': 'error',
+                'weekend_shift_balancing': 'error',
+                'fill_up_minimum_hours': 'error',
+                'shift_assignment_warnings': 'error',
+                'shift_assignment_debug': 'error',
+                'afternoon_balancing': 'error',
+                'constraint_verification': 'error',
+                'schedule_display': 'error',
+                'summary_statistics': 'error',
                 'export_notifications': 'info'
             }
         }
@@ -141,12 +252,13 @@ def process_schedule(request_data):
         with job_lock:
             job_status['progress'] = 'Creating scheduler...'
         
-        # Create scheduler with main.py integration
+        # Create scheduler with PRE-LOADED data and let it use ConfigManager defaults + form overrides
         scheduler = HospitalScheduler(
             people_data=people_data,
             night_dates=night_dates,
             festivity_dates=festivity_dates,
-            settings=settings
+            settings=form_overrides,  # Only pass the form overrides
+            config=config
         )
         
         with job_lock:
@@ -172,12 +284,17 @@ def process_schedule(request_data):
         scheduler.export_to_csv(os.path.join(output_dir, schedule_file), start_date, end_date)
         scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
         
-        # Verify constraints to get summary
-        constraint_results = scheduler.verify_constraints(start_date, end_date)
+        # Verify constraints to get summary (only if not already in multi-run)
+        if not scheduler.settings['multi_run']['enabled']:
+            constraint_results = scheduler.verify_constraints(start_date, end_date)
+        else:
+            # For multi-run, use the last constraint results if available
+            constraint_results = getattr(scheduler, 'last_constraint_results', {})
+        
         passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
         total_constraints = len(constraint_results)
         
-        # Create resultsK@
+        # Create results
         results = {
             'summary': f'Constraints: {passed_count}/{total_constraints} passed. Schedule covers {(end_date - start_date).days + 1} days.',
             'files': [

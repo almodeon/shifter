@@ -152,6 +152,20 @@
             </div>
         </div>
         
+        <!-- Debug Settings -->
+        <div class="settings-section">
+            <h3>🐛 Debug Settings</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="debug_mode_enabled" id="debugMode"> 
+                    <span class="checkbox-label">Debug Mode (use default data files)</span>
+                </label>
+                <small style="color: #666; display: block; margin-top: 5px;">
+                    When enabled, the scheduler will use default data files from the project instead of uploaded files.
+                </small>
+            </div>
+        </div>
+        
         <div class="form-group">
             <button type="submit" id="runButton">Generate Schedule</button>
         </div>
@@ -199,6 +213,41 @@
             document.getElementById('runButton').disabled = true;
             document.getElementById('runButton').textContent = 'Processing...';
         };
+        
+        // Toggle file requirements based on debug mode
+        document.getElementById('debugMode').onchange = function() {
+            const fileInputs = document.querySelectorAll('input[type="file"]');
+            const isDebugMode = this.checked;
+            
+            fileInputs.forEach(input => {
+                if (input.name === 'people_file') {
+                    input.required = !isDebugMode;
+                }
+            });
+            
+            // Update file section visibility/styling
+            const fileSection = document.querySelector('.settings-section');
+            if (isDebugMode) {
+                fileSection.style.opacity = '0.5';
+                fileSection.style.pointerEvents = 'none';
+            } else {
+                fileSection.style.opacity = '1';
+                fileSection.style.pointerEvents = 'auto';
+            }
+        };
+        
+        function updateProgress() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.running) {
+                        document.getElementById('progress').textContent = data.progress;
+                        setTimeout(updateProgress, 1000);
+                    } else if (data.results) {
+                        location.reload();
+                    }
+                });
+        }
     </script>
 </body>
 </html>

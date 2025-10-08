@@ -15,7 +15,7 @@ from config_manager import ConfigManager
 from data_loader import DataLoader
 
 class HospitalScheduler:
-    def __init__(self, people_data=None, night_dates=None, festivity_dates=None, settings=None, config_file=None):
+    def __init__(self, people_data=None, night_dates=None, festivity_dates=None, settings=None, config=None):
         self.people = people_data or {}
         self.schedule = {}
         self.shift_counts = {}
@@ -24,12 +24,20 @@ class HospitalScheduler:
         self.warnings = []  # New: track warnings when shifts cannot be assigned
         
         # Initialize configuration manager
-        self.config = ConfigManager(config_file)
+        if config is None:
+            self.config = ConfigManager()
+            print("✅ Default configuration loaded")
+        else:
+            self.config = config
+            print("✅ Custom configuration loaded")
         
         # Override with provided settings if any
         if settings:
             self.config.update(settings)
+            print("✅ Custom settings applied")
         
+        # print(self.config.get_all_settings())
+
         # Validate configuration
         is_valid, errors = self.config.validate_settings()
         if not is_valid:
@@ -38,7 +46,7 @@ class HospitalScheduler:
                 print(f"   {error}")
             print("Using default values for invalid settings...")
         
-        # Get settings from config manager
+        # Get settings from config manager (this should now include merged settings)
         self.settings = self.config.get_all_settings()
         
         # Initialize the logger
@@ -907,7 +915,7 @@ def main(settings_overrides=None):
         
         # Monthly and daily limits
         'max_weekend_days_per_month': 2,
-        'night_shifts_per_month': 0,
+        'night_shifts_per_month': 1,
         'max_consecutive_days': 6,
         'min_rest_hours_between_shifts': 11,
         'min_continuous_rest_hours': 24,
@@ -922,7 +930,7 @@ def main(settings_overrides=None):
         'data_files': {
             'people_data_file': 'desiderata_original.csv',     # People/constraints data file with extension
             'night_dates_file': 'notti.csv',          # Required night dates file with extension
-            'festivity_dates_file': 'festivi.csv'     # Festivity dates file with extension
+            'festivity_dates_file': 'festivi.csv',     # Festivity dates file with extension
         },
         
         # Bias mitigation settings
@@ -947,7 +955,7 @@ def main(settings_overrides=None):
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': True,
+            'enabled': False,
             'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
@@ -975,7 +983,7 @@ def main(settings_overrides=None):
         # Logging/Output verbosity settings (silence, error, info, debug)
         'logging': {
             'data_loading': 'error',              
-            'settings_display': 'error',
+            'settings_display': 'debug',
             'multi_run_optimization': 'error',
             'night_shift_assignment': 'error',
             'workload_balancing': 'error',
@@ -1026,21 +1034,17 @@ def main(settings_overrides=None):
         if not dependencies['excel_support']:
             print("💡 Tip: Install pandas and openpyxl for Excel (.xlsx) support: pip install pandas openpyxl")
     
-    # Create scheduler instance first to get settings with file names
-    temp_scheduler = HospitalScheduler(config_file=config_file)
+    # Get default file names directly from ConfigManager
+    config = ConfigManager(config_file)
     
     # Apply preset first if specified
     if preset:
-        temp_scheduler.apply_preset(preset)
+        config.apply_preset(preset)
     
-    # Then apply your custom settings (this will override preset values)
-    if settings:
-        temp_scheduler.update_settings(settings)
-    
-    # Get the configured file names
-    people_file = temp_scheduler.settings['data_files']['people_data_file']
-    night_file = temp_scheduler.settings['data_files']['night_dates_file']
-    festivity_file = temp_scheduler.settings['data_files']['festivity_dates_file']
+    # Get the configured file names from config manager
+    people_file = config.get('data_files.people_data_file')
+    night_file = config.get('data_files.night_dates_file')
+    festivity_file = config.get('data_files.festivity_dates_file')
     
     # Load data files directly with specified extensions
     people_data = data_loader.load_people_data(people_file, log_level='error')
@@ -1056,6 +1060,8 @@ def main(settings_overrides=None):
                 if people_data and len(people_data) >= 2:
                     break
     
+    print(f"👥 Loaded {len(people_data)} people from {people_file}")
+
     night_dates = data_loader.load_night_dates(night_file, log_level='error')
     
     # If the specified file doesn't exist, try alternative formats
@@ -1068,6 +1074,8 @@ def main(settings_overrides=None):
                 night_dates = data_loader.load_night_dates(alt_file, log_level='error')
                 if night_dates:
                     break
+    
+    print(f"🌙 Loaded {len(night_dates)} night dates from {night_file}")
     
     # Load festivity dates
     festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error')
@@ -1083,6 +1091,8 @@ def main(settings_overrides=None):
                 if festivity_dates:
                     break
     
+    print(f"🎉 Loaded {len(festivity_dates)} festivity dates from {festivity_file}")
+
     # Validate loaded data
     is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)
     if not is_valid:
@@ -1099,16 +1109,17 @@ def main(settings_overrides=None):
         people_data=people_data, 
         night_dates=night_dates,
         festivity_dates=festivity_dates,
-        config_file=config_file
+        settings=settings,  # Pass the merged settings here
+        config=config       # And also pass the config manager
     )
     
-    # Apply preset first if specified
-    if preset:
-        scheduler.apply_preset(preset)
+    # Apply preset first if specified (this is redundant now, remove it)
+    # if preset:
+    #     scheduler.apply_preset(preset)
     
-    # Then apply your custom settings (this will override preset values)
-    if settings:
-        scheduler.update_settings(settings)
+    # Then apply your custom settings (this is also redundant now, remove it)
+    # if settings:
+    #     scheduler.update_settings(settings)
     
     # Show configuration summary if settings display is enabled
     if scheduler.config.get('logging.settings_display') in ['info', 'debug']:
@@ -1144,7 +1155,7 @@ def main(settings_overrides=None):
 if __name__ == "__main__":
     overrides = {
         'multi_run': {
-            'enabled': True,
+            'enabled': False,
             'max_runs': 50
         },
         'logging': {
