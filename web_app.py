@@ -201,20 +201,21 @@ def process_schedule(request_data):
         
         # Build ONLY the settings overrides from the web form (let ConfigManager handle defaults)
         form_overrides = {
-            # Staff requirements (only what's exposed in the web form)
+            # Staff requirements (all exposed in web form)
             'min_morning_staff': int(form.get('min_morning_staff', 3)),
             'max_afternoon_staff': int(form.get('max_afternoon_staff', 1)),
             'night_staff': int(form.get('night_staff', 1)),
             'saturday_morning_staff': int(form.get('saturday_morning_staff', 0)),
+            'saturday_afternoon_staff': int(form.get('saturday_afternoon_staff', 0)),
             'saturday_mp_staff': int(form.get('saturday_mp_staff', 1)),
             'sunday_staff': int(form.get('sunday_staff', 1)),
             'festivity_staff': int(form.get('festivity_staff', 1)),
             
-            # Work limits (only what's exposed in the web form)
+            # Work limits (all exposed in web form)
             'max_weekend_days_per_month': int(form.get('max_weekend_days_per_month', 2)),
-            'night_shifts_per_month': int(form.get('night_shifts_per_month', 4)),
+            'night_shifts_per_month': int(form.get('night_shifts_per_month', 1)),
             
-            # Multi-run settings (only what's exposed in the web form)
+            # Multi-run settings (all exposed in web form)
             'multi_run': {
                 'enabled': 'multi_run_enabled' in form,
                 'max_runs': int(form.get('max_runs', 100)),
@@ -225,9 +226,15 @@ def process_schedule(request_data):
                 }
             },
             
-            # Afternoon balancing (only what's exposed in the web form)
+            # Afternoon balancing (all exposed in web form)
             'afternoon_balancing': {
-                'enabled': 'afternoon_balancing_enabled' in form
+                'enabled': 'afternoon_balancing_enabled' in form,
+                'deprioritize_weekly_repeats': 'deprioritize_weekly_repeats' in form,
+                'consider_weekly_hours': 'consider_weekly_hours' in form,
+                'enforce_strict_weekly_balance': 'enforce_strict_weekly_balance' in form,
+                'consider_weekends_afternoons': 'consider_weekends_afternoons' in form,
+                'give_precedence_to_afternoon_over_morning': 'give_precedence_to_afternoon_over_morning' in form,
+                'prefer_not_in_internship': 'prefer_not_in_internship' in form
             },
             
             # Web-specific logging overrides (reduce noise in web interface)
@@ -293,10 +300,32 @@ def process_schedule(request_data):
         
         passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
         total_constraints = len(constraint_results)
+        failed_count = total_constraints - passed_count
+        
+        # Format constraint results for display
+        constraint_details = []
+        for constraint_name, status in constraint_results.items():
+            icon = "✅" if status == 'PASS' else "❌"
+            # Clean up constraint name for display
+            display_name = constraint_name.replace('_', ' ').title()
+            constraint_details.append({
+                'name': display_name,
+                'status': status,
+                'icon': icon
+            })
+        
+        # Sort constraints: failed first, then passed
+        constraint_details.sort(key=lambda x: (x['status'] == 'PASS', x['name']))
         
         # Create results
+        if failed_count == 0:
+            summary = f"✅ All {total_constraints} constraints passed!"
+        else:
+            summary = f"⚠️ {passed_count}/{total_constraints} constraints passed ({failed_count} failed)"
+        
         results = {
-            'summary': f'Constraints: {passed_count}/{total_constraints} passed. Schedule covers {(end_date - start_date).days + 1} days.',
+            'summary': summary,
+            'constraint_details': constraint_details,
             'files': [
                 {'name': schedule_file, 'display_name': 'Schedule (CSV)'},
                 {'name': stats_file, 'display_name': 'Staff Statistics (CSV)'}
