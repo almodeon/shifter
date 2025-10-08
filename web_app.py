@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from main import HospitalScheduler
 from data_loader import DataLoader
+from config_manager import ConfigManager  # Move this import to the top
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -115,7 +116,6 @@ def process_schedule(request_data):
         
         if debug_mode:
             # Get default file names directly from ConfigManager (like main.py)
-            from config_manager import ConfigManager
             config = ConfigManager()
             
             people_file = config.get('data_files.people_data_file')
@@ -185,9 +185,9 @@ def process_schedule(request_data):
             people_data = data_loader.load_people_data(people_file, log_level='error') if people_file else {}
             night_dates = data_loader.load_night_dates(night_file, log_level='error') if night_file else []
             festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error') if festivity_file else []
-            
-            # Create a new config manager for uploaded files mode
-            config = ConfigManager()
+        
+        # Create config manager (now available for both modes)
+        config = ConfigManager()
         
         # Validate loaded data
         is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)

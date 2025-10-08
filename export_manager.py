@@ -123,12 +123,8 @@ class ExportManager:
             
             # Find warnings for this date
             # Debug: Check if warnings exist
-            print(f"Checking warnings for date: {date.strftime('%Y-%m-%d')}")
-            print(f"Current warnings: {self.scheduler.warnings}")
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%Y-%m-%d') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
-
-            print(warnings_str)
 
             # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, then person shifts, then Warnings
             row = [

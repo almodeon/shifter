@@ -723,6 +723,33 @@ class ShiftAssigner:
                     self.scheduler.logger.log('afternoon_balancing', 'debug', 
                         f"No balanced eligible people found, using all {len(eligible_people)} eligible")
         
+        # Apply internship preference for afternoon shifts as tie breaker
+        if (shift == 'afternoon' and 
+            len(eligible_people) > 1 and 
+            self.scheduler.settings['afternoon_balancing'].get('prefer_not_in_internship', False)):
+            
+            # Separate people into those with and without internship (tirocinio)
+            non_internship = []
+            with_internship = []
+            
+            for person_id in eligible_people:
+                person = self.scheduler.people[person_id]
+                has_internship = 'tirocinio_dates' in person and person['tirocinio_dates']
+                
+                if has_internship:
+                    with_internship.append(person_id)
+                else:
+                    non_internship.append(person_id)
+            
+            # If there are people without internship, prefer them
+            if non_internship:
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"Internship preference on {date}: {len(non_internship)} without internship, {len(with_internship)} with internship - preferring non-internship")
+                eligible_people = non_internship
+            else:
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"Internship preference on {date}: all {len(eligible_people)} candidates have internship")
+
         # Log eligibility summary when there are eligible people
         if self.logger.should_log('shift_assignment_warnings', 'debug'):
             eligible_count = len(eligible_people)

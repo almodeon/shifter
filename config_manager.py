@@ -99,7 +99,8 @@ class ConfigManager:
                 'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
                 'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
                 'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
-                'max_consecutive_afternoons': 2  # Max consecutive afternoons per person
+                'prefer_not_in_internship': True,  # Prefer people not in internship for afternoon shifts
+                'max_consecutive_afternoons': 1  # Max consecutive afternoons per person
             },
             
             # Logging/Output verbosity settings (silence, error, info, debug)

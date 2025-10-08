@@ -955,7 +955,7 @@ def main(settings_overrides=None):
         
         # Multi-run optimization settings
         'multi_run': {
-            'enabled': False,
+            'enabled': True,
             'max_runs': 100,
             'target_fails': 0,
             'enable_randomization_for_multi_run': True,
@@ -977,7 +977,8 @@ def main(settings_overrides=None):
             'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
             'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
             'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
-            'give_precedence_to_afternoon_over_morning': True  # Assign afternoon shifts before morning shifts
+            'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
+            'prefer_not_in_internship': True  # Prefer people not in internship for afternoon shifts
         },
         
         # Logging/Output verbosity settings (silence, error, info, debug)
@@ -1156,10 +1157,23 @@ if __name__ == "__main__":
     overrides = {
         'multi_run': {
             'enabled': False,
-            'max_runs': 50
+            'max_runs': 100
         },
         'logging': {
-            'summary_statistics': 'debug'
+            'data_loading': 'error',              
+            'settings_display': 'error',
+            'multi_run_optimization': 'error',
+            'night_shift_assignment': 'error',
+            'workload_balancing': 'error',
+            'weekend_shift_balancing': 'error',
+            'fill_up_minimum_hours': 'error',
+            'shift_assignment_warnings': 'debug',
+            'shift_assignment_debug': 'debug',
+            'afternoon_balancing': 'error',
+            'constraint_verification': 'error',
+            'schedule_display': 'error',
+            'summary_statistics': 'debug',
+            'export_notifications': 'info'
         },
         'min_morning_staff': 2
     }
