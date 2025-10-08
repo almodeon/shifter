@@ -1175,6 +1175,6 @@ if __name__ == "__main__":
             'summary_statistics': 'debug',
             'export_notifications': 'info'
         },
-        'min_morning_staff': 2
+        # 'min_morning_staff': 3
     }
     main(overrides)
