@@ -32,35 +32,39 @@ class ShiftAssigner:
         self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 1: ASSIGNING ALL NIGHT SHIFTS ===")
         self.assign_all_night_shifts(dates_list, people_list)
         
+        # PHASE 2: Assign ALL festivity shifts (NEW - MINIMAL CHANGE)
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 2: ASSIGNING ALL FESTIVITY SHIFTS ===")
+        self.assign_all_festivity_shifts(dates_list, people_list)
+        
         # Pre-calculate afternoon targets after night shifts are assigned (for workload balancing)
         if self.scheduler.settings['workload_balancing']['enabled']:
             self.scheduler.logger.log('workload_balancing', 'info', "Pre-calculating afternoon targets after night shift assignment...")
             for person_id in people_list:
                 self.afternoon_targets[person_id] = self.calculate_adjusted_afternoon_target(person_id)
         
-        # PHASE 2: Assign ALL weekend shifts
-        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 2: ASSIGNING ALL WEEKEND SHIFTS ===")
+        # PHASE 3: Assign ALL weekend shifts (but skip festivities - already done)
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 3: ASSIGNING ALL WEEKEND SHIFTS ===")
         self.assign_all_weekend_shifts(dates_list, people_list)
         
-        # PHASE 3: Assign ALL afternoon shifts (with precedence option)
+        # PHASE 4: Assign ALL afternoon shifts (with precedence option)
         afternoon_precedence = self.scheduler.settings['afternoon_balancing'].get('give_precedence_to_afternoon_over_morning', False)
         
         if afternoon_precedence:
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 3: ASSIGNING ALL AFTERNOON SHIFTS (PRECEDENCE ENABLED) ===")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL AFTERNOON SHIFTS (PRECEDENCE ENABLED) ===")
             self.assign_all_afternoon_shifts(dates_list, people_list)
             
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL MORNING SHIFTS ===")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 5: ASSIGNING ALL MORNING SHIFTS ===")
             self.assign_all_morning_shifts(dates_list, people_list)
         else:
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 3: ASSIGNING ALL MORNING SHIFTS ===")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL MORNING SHIFTS ===")
             self.assign_all_morning_shifts(dates_list, people_list)
             
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 4: ASSIGNING ALL AFTERNOON SHIFTS ===")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 5: ASSIGNING ALL AFTERNOON SHIFTS ===")
             self.assign_all_afternoon_shifts(dates_list, people_list)
         
-        # PHASE 5: Fill up to minimum hours if enabled
+        # PHASE 6: Fill up to minimum hours if enabled
         if self.scheduler.settings['fill_up_to_minimum_hours']:
-            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 5: FILLING UP TO MINIMUM HOURS ===")
+            self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 6: FILLING UP TO MINIMUM HOURS ===")
             self.ensure_minimum_hours(dates, people_list)
         else:
             self.scheduler.logger.log('fill_up_minimum_hours', 'info', "Fill up to minimum hours: DISABLED")
@@ -87,6 +91,22 @@ class ShiftAssigner:
                     self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
                     self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
+    def assign_all_festivity_shifts(self, dates_list, people_list):
+        """Assign festivity MP shifts with high priority (NEW - MINIMAL METHOD)"""
+        festivity_dates = [date for date in dates_list if date in self.scheduler.festivity_dates]
+        
+        for date in festivity_dates:
+            required_people = self.scheduler.settings.get('festivity_staff', 1)
+            for i in range(required_people):
+                best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                if best_person:
+                    self._assign_shift(best_person, date, 'mp')
+                    self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned festivity MP: {best_person} on {date}")
+                else:
+                    failure_msg = f"Failed to assign festivity MP shift on {date} (position {i+1})"
+                    self.scheduler.warnings.append(failure_msg)
+                    self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+
     def assign_all_weekend_shifts(self, dates_list, people_list):
         """Assign all weekend shifts across all dates"""
         weekend_dates = [date for date in dates_list if date.weekday() >= 5]
@@ -95,19 +115,9 @@ class ShiftAssigner:
             is_festivity = date in self.scheduler.festivity_dates
             
             if is_festivity:
-                # Festivity days have only MP shift
-                required_people = self.scheduler.settings.get('festivity_staff', 1)
-                for i in range(required_people):
-                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
-                    if best_person:
-                        self._assign_shift(best_person, date, 'mp')
-                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned festivity MP: {best_person} on {date}")
-                    else:
-                        # ADD THIS: Capture the failure as a warning
-                        failure_msg = f"Failed to assign festivity MP shift on {date} (position {i+1})"
-                        self.scheduler.warnings.append(failure_msg)
-                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
-                        
+                # Skip - festivities already handled in Phase 2
+                continue
+            
             elif date.weekday() == 6:  # Sunday
                 required_people = self.scheduler.settings.get('sunday_staff', 1)
                 for i in range(required_people):
