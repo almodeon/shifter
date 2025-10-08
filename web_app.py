@@ -203,7 +203,7 @@ def process_schedule(request_data):
         form_overrides = {
             # Staff requirements (all exposed in web form)
             'min_morning_staff': int(form.get('min_morning_staff', 3)),
-            'max_afternoon_staff': int(form.get('max_afternoon_staff', 1)),
+            'target_afternoon_staff': int(form.get('target_afternoon_staff', 1)),
             'night_staff': int(form.get('night_staff', 1)),
             'saturday_morning_staff': int(form.get('saturday_morning_staff', 0)),
             'saturday_afternoon_staff': int(form.get('saturday_afternoon_staff', 0)),

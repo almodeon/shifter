@@ -293,7 +293,7 @@ class ConstraintRulesEngine:
         ))
         
         self.add_constraint(StaffingConstraint(
-            'weekday_afternoon_staff', 'afternoon', 0, settings['max_afternoon_staff'],
+            'weekday_afternoon_staff', 'afternoon', 0, settings['target_afternoon_staff'],
             days_filter=lambda d: d.weekday() < 5,  # Monday-Friday
             severity=ConstraintSeverity.HIGH
         ))

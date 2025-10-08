@@ -176,7 +176,7 @@ class ShiftAssigner:
         weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.festivity_dates]
         
         for date in weekday_dates:
-            required_people = self.scheduler.settings['max_afternoon_staff']
+            required_people = self.scheduler.settings['target_afternoon_staff']
             for i in range(required_people):
                 best_person = self.find_best_person_for_shift(people_list, date, 'afternoon')
                 if best_person:

@@ -774,7 +774,7 @@ class HospitalScheduler:
                 unassigned_count += max(0, required_morning - actual_morning)
                 
                 # Afternoon shifts (optional, but count if setting > 0)
-                required_afternoon = self.settings['max_afternoon_staff']
+                required_afternoon = self.settings['target_afternoon_staff']
                 actual_afternoon = self._count_assigned_shifts_on_date(current_date, 'afternoon')
                 unassigned_count += max(0, required_afternoon - actual_afternoon)
             
@@ -896,8 +896,8 @@ def main(settings_overrides=None):
     # Option 2: Use custom configuration inline (as before)
     base_settings = {
         # Staff requirements
-        'min_morning_staff': 3,
-        'max_afternoon_staff': 1,
+        'min_morning_staff': 2,
+        'target_afternoon_staff': 1,
         'night_staff': 1,
         'saturday_morning_staff': 0,
         'saturday_afternoon_staff': 0,

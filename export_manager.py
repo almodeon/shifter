@@ -450,7 +450,7 @@ class ExportManager:
             'festivity_coverage': 'Festivity',
             # Legacy names (in case old constraint names are still used)
             'forbidden_shifts': 'ForbShifts',
-            'max_afternoon_staff': 'MaxAftnPers',
+            'target_afternoon_staff': 'MaxAftnPers',
             'max_consecutive_days': 'ConsecDays',
             'monthly_night_limits': 'MonthNightLim',
             'morning_staff_weekdays': 'WDMornPers',

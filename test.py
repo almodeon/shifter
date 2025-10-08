@@ -35,7 +35,7 @@ class SchedulerTester:
             },
             'scheduler_settings': {
                 'min_morning_staff': 3,
-                'max_afternoon_staff': 1,
+                'target_afternoon_staff': 1,
                 'night_staff': 1,
                 'saturday_morning_staff': 0,
                 'saturday_afternoon_staff': 0,
@@ -572,7 +572,7 @@ class SchedulerTester:
         name_map = {
             'morning_staff_weekdays': 'WDMornPers',
             'saturday_morning_staff': 'SatMornPers',
-            'max_afternoon_staff': 'MaxAftnPers',
+            'target_afternoon_staff': 'MaxAftnPers',
             'sunday_mp_staff': 'SunMPPers',
             'night_coverage': 'NightCover',
             'monthly_night_limits': 'MonthNightLim',
@@ -842,7 +842,7 @@ def main():
     scheduler_options = {
         # Staffing requirements
         'min_morning_staff': 4,           # Minimum morning staff on weekdays
-        'max_afternoon_staff': 1,         # Maximum afternoon staff (acts as target)
+        'target_afternoon_staff': 1,         # Maximum afternoon staff (acts as target)
         'saturday_morning_staff': 0,      # Saturday morning staff requirement
         'saturday_afternoon_staff': 0,    # Saturday afternoon staff requirement
         'sunday_staff': 1,                # Sunday MP shift staff requirement
@@ -921,7 +921,7 @@ def main():
     print("="*80)
     print(f"Scheduler Configuration:")
     print(f"  Morning staff (weekdays): {scheduler_options['min_morning_staff']}")
-    print(f"  Afternoon staff (weekdays): {scheduler_options['max_afternoon_staff']}")
+    print(f"  Afternoon staff (weekdays): {scheduler_options['target_afternoon_staff']}")
     print(f"  Weekend staff - Sat: {scheduler_options['saturday_morning_staff']}M/{scheduler_options['saturday_afternoon_staff']}P, Sun: {scheduler_options['sunday_staff']}MP")
     print(f"  Weekly hours: {scheduler_options['min_weekly_hours']}-{scheduler_options['max_weekly_hours']}h")
     print(f"  Monthly limits: {scheduler_options['night_shifts_per_month']} nights, {scheduler_options['max_weekend_days_per_month']} weekend days")

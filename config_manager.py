@@ -18,7 +18,7 @@ class ConfigManager:
         base_settings = {
             # Staff requirements
             'min_morning_staff': 3,
-            'max_afternoon_staff': 1,
+            'target_afternoon_staff': 1,
             'night_staff': 1,
             'saturday_morning_staff': 0,
             'saturday_afternoon_staff': 0,
@@ -182,7 +182,7 @@ class ConfigManager:
         # Validate numeric constraints
         numeric_validations = [
             ('min_morning_staff', 0, 20),
-            ('max_afternoon_staff', 0, 10),
+            ('target_afternoon_staff', 0, 10),
             ('night_staff', 0, 5),
             ('min_weekly_hours', 0, 60),
             ('max_weekly_hours', 0, 60),
@@ -382,7 +382,7 @@ class ConfigManager:
         print("=== CONFIGURATION SUMMARY ===")
         print(f"Staff Requirements:")
         print(f"  Morning (weekdays): {self.get('min_morning_staff')}")
-        print(f"  Afternoon (max): {self.get('max_afternoon_staff')}")
+        print(f"  Afternoon (max): {self.get('target_afternoon_staff')}")
         print(f"  Night: {self.get('night_staff')}")
         print(f"  Sunday MP: {self.get('sunday_staff')}")
         print(f"  Festivity MP: {self.get('festivity_staff')}")

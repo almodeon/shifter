@@ -11,9 +11,7 @@
         .generate-section { 
             background: white; border: 2px solid #007cba; border-radius: 8px; 
             padding: 20px; margin-bottom: 20px;
-            min-height: 400px;
-            display: flex;
-            flex-direction: column;
+            text-align: center;
         }
         .generate-button-container { 
             text-align: center; 
@@ -49,9 +47,9 @@
         }
         input[type="checkbox"] { width: auto; margin-right: 6px; }
         .checkbox-label { display: inline-block; font-weight: normal; font-size: 14px; margin-bottom: 2px; }
-        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-        .three-column { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-        .date-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .three-column { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; }
+        .date-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
         button { 
             background: #007cba; color: white; padding: 12px 25px; border: none; 
             cursor: pointer; border-radius: 5px; font-size: 16px; font-weight: bold;
@@ -68,10 +66,10 @@
         }
         .quick-dates { display: flex; gap: 5px; margin-top: 5px; }
         .quick-date-btn { 
-            background: #f0f0f0; border: 1px solid #ccc; padding: 4px 8px; 
+            background: #747474; border: 1px solid #ccc; padding: 4px 8px; 
             cursor: pointer; border-radius: 3px; font-size: 12px;
         }
-        .quick-date-btn:hover { background: #e0e0e0; }
+        .quick-date-btn:hover { background: #929292; }
         h1 { margin-bottom: 25px; color: #333; }
         h3 { margin-bottom: 15px; }
     </style>
@@ -114,7 +112,7 @@
                 </div>
                 
                 <div class="form-group">
-                    <label>
+                    <label title="Use default example files instead of uploading your own data files">
                         <input type="checkbox" name="debug_mode_enabled" id="debugMode"> 
                         <span class="checkbox-label">🐛 Debug Mode (use default files)</span>
                     </label>
@@ -123,76 +121,76 @@
             
             <!-- Right Panel - Generate Button & Results -->
             <div class="right-panel">
+                <!-- Blue Section - Only Button & Title -->
                 <div class="generate-section">
-                    <!-- Top - Generate Button (Full Width) -->
-                    <div class="generate-button-container">
-                        <h3 style="margin-top: 0;">⚡ Generate Schedule</h3>
-                        <button type="submit" id="runButton">Generate Schedule</button>
-                    </div>
-                    
-                    <!-- Bottom - Two Columns -->
-                    <div class="generate-columns">
-                        <!-- Left Column - Status & Files -->
-                        <div class="generate-left">
-                            <!-- Status Display -->
-                            {% if status.running %}
-                            <div class="progress">
-                                <strong>Processing...</strong><br>
-                                {{ status.progress }}
-                                <script>setTimeout(function(){ location.reload(); }, 2000);</script>
-                            </div>
-                            {% endif %}
-                            
-                            {% if status.error %}
-                            <div class="error">
-                                <strong>Error:</strong> {{ status.error }}
-                            </div>
-                            {% endif %}
-                            
-                            {% if status.results %}
-                            <div class="results">
-                                <h4 style="margin-top: 0;">📁 Download Files</h4>
-                                {% for file in status.results.files %}
-                                <a href="/download/{{ file.name }}" class="download-link">{{ file.display_name }}</a>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
+                    <h3 style="margin-top: 0;">⚡ Generate Schedule</h3>
+                    <button type="submit" id="runButton">Generate Schedule</button>
+                </div>
+                
+                <!-- Status & Results - Outside Blue Section -->
+                <div class="generate-columns">
+                    <!-- Left Column - Status & Files -->
+                    <div class="generate-left">
+                        <!-- Status Display -->
+                        {% if status.running %}
+                        <div class="progress">
+                            <strong>Processing...</strong><br>
+                            {{ status.progress }}
+                            <script>setTimeout(function(){ location.reload(); }, 2000);</script>
+                        </div>
+                        {% endif %}
+                        
+                        {% if status.error %}
+                        <div class="error">
+                            <strong>Error:</strong> {{ status.error }}
+                        </div>
+                        {% endif %}
+                        
+                        {% if status.results %}
+                        <div class="results">
+                            <h4 style="margin-top: 0;">✅ Results</h4>
+                            <p><strong>Schedule generated successfully!</strong></p>
+                            <p>{{ status.results.summary }}</p>
                         </div>
                         
-                        <!-- Right Column - Details & Constraints -->
-                        <div class="generate-right">
-                            {% if status.results %}
-                            <div class="results">
-                                <h4 style="margin-top: 0;">✅ Results</h4>
-                                <p><strong>Schedule generated successfully!</strong></p>
-                                <p>{{ status.results.summary }}</p>
-                                
-                                {% if status.results.constraint_details %}
-                                <h5>Constraint Status:</h5>
-                                <div style="margin: 10px 0;">
-                                    {% for constraint in status.results.constraint_details %}
-                                    <div style="font-size: 14px; margin: 3px 0; display: flex; align-items: center;">
-                                        <span style="margin-right: 8px;">{{ constraint.icon }}</span>
-                                        <span style="flex: 1;">{{ constraint.name }}</span>
-                                        <span style="font-size: 12px; color: {% if constraint.status == 'PASS' %}#4caf50{% else %}#f44336{% endif %};">
-                                            {{ constraint.status }}
-                                        </span>
-                                    </div>
-                                    {% endfor %}
+                        <div class="results">
+                            <h4 style="margin-top: 0;">📁 Download Files</h4>
+                            {% for file in status.results.files %}
+                            <a href="/download/{{ file.name }}" class="download-link">{{ file.display_name }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Right Column - Details & Constraints -->
+                    <div class="generate-right">
+                        {% if status.results %}
+                        <div class="results">
+                            {% if status.results.constraint_details %}
+                            <h5>Constraint Status:</h5>
+                            <div style="margin: 10px 0;">
+                                {% for constraint in status.results.constraint_details %}
+                                <div style="font-size: 14px; margin: 3px 0; display: flex; align-items: center;">
+                                    <span style="margin-right: 8px;">{{ constraint.icon }}</span>
+                                    <span style="flex: 1;">{{ constraint.name }}</span>
+                                    <span style="font-size: 12px; color: {% if constraint.status == 'PASS' %}#4caf50{% else %}#f44336{% endif %};">
+                                        {{ constraint.status }}
+                                    </span>
                                 </div>
-                                {% endif %}
-                                
-                                {% if status.results.warnings %}
-                                <h5>Warnings:</h5>
-                                <ul style="font-size: 14px; margin: 10px 0;">
-                                {% for warning in status.results.warnings %}
-                                <li>{{ warning }}</li>
                                 {% endfor %}
-                                </ul>
-                                {% endif %}
                             </div>
                             {% endif %}
+                            
+                            {% if status.results.warnings %}
+                            <h5>Warnings:</h5>
+                            <ul style="font-size: 14px; margin: 10px 0;">
+                            {% for warning in status.results.warnings %}
+                            <li>{{ warning }}</li>
+                            {% endfor %}
+                            </ul>
+                            {% endif %}
                         </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -210,38 +208,38 @@
                     <div class="advanced-left">
                         <!-- Staff Requirements -->
                         <div class="settings-section">
-                            <h3>👥 Staff Requirements</h3>
+                            <h3 title="Configure how many staff members are required for different shifts and days">👥 Staff Requirements</h3>
                             <div class="three-column">
                                 <div class="form-group">
-                                    <label>Min Morning Staff:</label>
+                                    <label title="Minimum number of staff required for morning shifts on weekdays">Minimum morning staff:</label>
                                     <input type="number" name="min_morning_staff" value="3" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Max Afternoon Staff:</label>
-                                    <input type="number" name="max_afternoon_staff" value="1" min="0" max="10">
+                                    <label title="Target number of staff for afternoon shifts on weekdays">Target afternoon staff:</label>
+                                    <input type="number" name="target_afternoon_staff" value="1" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Night Staff:</label>
+                                    <label title="Number of staff required for night shifts">Night staff:</label>
                                     <input type="number" name="night_staff" value="1" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Saturday Morning:</label>
+                                    <label title="Number of staff required for Saturday morning shifts">Saturday morning staff:</label>
                                     <input type="number" name="saturday_morning_staff" value="0" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Saturday Afternoon:</label>
+                                    <label title="Number of staff required for Saturday afternoon shifts">Saturday afternoon staff:</label>
                                     <input type="number" name="saturday_afternoon_staff" value="0" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Saturday MP:</label>
+                                    <label title="Number of staff required for Saturday all-day (morning+afternoon) shifts">Saturday all-day staff:</label>
                                     <input type="number" name="saturday_mp_staff" value="1" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Sunday Staff:</label>
+                                    <label title="Number of staff required for Sunday all-day shifts">Sunday all-day staff:</label>
                                     <input type="number" name="sunday_staff" value="1" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Festivity Staff:</label>
+                                    <label title="Number of staff required for festivity (holiday) all-day shifts">Festivity all-day staff:</label>
                                     <input type="number" name="festivity_staff" value="1" min="0" max="10">
                                 </div>
                             </div>
@@ -249,15 +247,38 @@
                         
                         <!-- Work Limits -->
                         <div class="settings-section">
-                            <h3>⏱️ Work Limits</h3>
+                            <h3 title="Set maximum limits for different types of work assignments">⏱️ Work Limits</h3>
                             <div class="two-column">
                                 <div class="form-group">
-                                    <label>Max Weekend Days/Month:</label>
+                                    <label title="Maximum number of weekend days a person can work per month">Max weekend days/month:</label>
                                     <input type="number" name="max_weekend_days_per_month" value="2" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label>Max Night Shifts/Month:</label>
+                                    <label title="Maximum number of night shifts a person can work per month">Max night shifts/month:</label>
                                     <input type="number" name="night_shifts_per_month" value="1" min="0" max="10">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Priority Assignment -->
+                        <div class="settings-section">
+                            <h3 title="Configure priority-based assignment system for balancing workload">🎯 Priority Assignment</h3>
+                            <div class="two-column">
+                                <div class="form-group">
+                                    <label title="Enable priority-based assignment for night shifts to balance workload">
+                                        <input type="checkbox" name="night_priority_enabled" checked> 
+                                        <span class="checkbox-label">Night Priority Enabled</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Enable priority-based assignment for weekend shifts to balance workload">
+                                        <input type="checkbox" name="weekend_priority_enabled" checked> 
+                                        <span class="checkbox-label">Weekend Priority Enabled</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Weight factor for priority calculations (higher = more emphasis on balancing)">Priority Weight:</label>
+                                    <input type="number" name="priority_weight" value="1.0" min="0" max="5" step="0.1">
                                 </div>
                             </div>
                         </div>
@@ -267,26 +288,50 @@
                     <div class="advanced-right">
                         <!-- Optimization Settings -->
                         <div class="settings-section">
-                            <h3>🎯 Optimization Settings</h3>
+                            <h3 title="Configure multi-run optimization and scoring system for finding the best schedules">🎯 Optimization Settings</h3>
                             <div class="two-column">
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Run multiple schedule generations and select the best result">
                                         <input type="checkbox" name="multi_run_enabled" checked> 
                                         <span class="checkbox-label">Multi-run Optimization</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>Maximum Runs:</label>
+                                    <label title="Number of schedule generation attempts (more runs = better results but longer time)">Maximum Runs:</label>
                                     <input type="number" name="max_runs" value="100" min="1" max="1000">
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Only consider schedules that strictly follow forbidden shifts and vacation constraints">
+                                        <input type="checkbox" name="enforce_desiderata" checked> 
+                                        <span class="checkbox-label">Enforce Desiderata</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Prioritize solutions with the fewest unassigned shifts over other metrics">
+                                        <input type="checkbox" name="prioritize_minimal_unassigned_shifts" checked> 
+                                        <span class="checkbox-label">Prioritize Minimal Unassigned</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Use scoring system to evaluate and compare different schedule solutions">
                                         <input type="checkbox" name="person_scoring_enabled" checked> 
                                         <span class="checkbox-label">Person Scoring</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Weight for night shifts in scoring calculation (higher = more penalty for imbalance)">Night Score Coefficient:</label>
+                                    <input type="number" name="night_score_coeff" value="2.0" min="0" max="5" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label title="Weight for weekend shifts in scoring calculation (higher = more penalty for imbalance)">Weekend Score Coefficient:</label>
+                                    <input type="number" name="weekend_score_coeff" value="2.0" min="0" max="5" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label title="Weight for afternoon shifts in scoring calculation (higher = more penalty for imbalance)">Afternoon Score Coefficient:</label>
+                                    <input type="number" name="afternoon_score_coeff" value="1.0" min="0" max="5" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label title="Balance afternoon shifts across staff members on a weekly basis">
                                         <input type="checkbox" name="afternoon_balancing_enabled" checked> 
                                         <span class="checkbox-label">Afternoon Balancing</span>
                                     </label>
@@ -296,40 +341,40 @@
                         
                         <!-- Afternoon Balancing Advanced Settings -->
                         <div class="settings-section">
-                            <h3>🔄 Afternoon Balancing Advanced</h3>
+                            <h3 title="Fine-tune how afternoon shifts are balanced and distributed among staff">🔄 Afternoon Balancing Advanced</h3>
                             <div class="two-column">
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Lower priority for people who already have afternoon shifts in the current week">
                                         <input type="checkbox" name="deprioritize_weekly_repeats" checked> 
                                         <span class="checkbox-label">Deprioritize Weekly Repeats</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Consider total weekly working hours when assigning afternoon shifts">
                                         <input type="checkbox" name="consider_weekly_hours" checked> 
                                         <span class="checkbox-label">Consider Weekly Hours</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Only assign afternoon shifts to people with the lowest weekly afternoon count">
                                         <input type="checkbox" name="enforce_strict_weekly_balance" checked> 
                                         <span class="checkbox-label">Enforce Strict Weekly Balance</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Count weekend all-day (MP) shifts as afternoon shifts for balancing purposes">
                                         <input type="checkbox" name="consider_weekends_afternoons"> 
                                         <span class="checkbox-label">Consider Weekends as Afternoons</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Assign afternoon shifts before morning shifts to ensure afternoon coverage">
                                         <input type="checkbox" name="give_precedence_to_afternoon_over_morning" checked> 
                                         <span class="checkbox-label">Precedence Afternoon over Morning</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
-                                    <label>
+                                    <label title="Prefer people not currently in internship for afternoon shift assignments">
                                         <input type="checkbox" name="prefer_not_in_internship" checked> 
                                         <span class="checkbox-label">Prefer Not in Internship</span>
                                     </label>
