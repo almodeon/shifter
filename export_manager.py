@@ -67,54 +67,69 @@ class ExportManager:
                 # Check if this person has prohibited weekend on this date
                 is_prohibited_weekend = self._is_prohibited_weekend(person_id, date)
                 
+                # Convert shifts to M, P, N, MP format first
+                shift_codes = []
+                for shift in shifts:
+                    if shift == 'morning':
+                        shift_codes.append('M')
+                        morning_count += 1
+                    elif shift == 'afternoon':
+                        shift_codes.append('P')
+                        afternoon_count += 1
+                    elif shift == 'mp':
+                        shift_codes.append('MP')
+                        morning_count += 1  # MP counts as both morning and afternoon staff
+                        afternoon_count += 1
+                    elif shift == 'night':
+                        shift_codes.append('N')
+                        night_count += 1
+                
+                shift_str = "".join(shift_codes) if shift_codes else ""
+                
+                # Collect all markers that need to be appended
+                markers = []
+                
                 if is_on_vacation:
-                    # Person is on vacation - show F or (F)
+                    # Person is on vacation - add F or (F) as marker
                     if is_weekend_or_holiday:
-                        person_data.append("(F)")
+                        markers.append("(F)")
                     else:
-                        person_data.append("F")
+                        markers.append("F")
                 elif is_prohibited_weekend:
-                    # Person has prohibited weekend - show (W)
-                    person_data.append("(D) W")
+                    # Person has prohibited weekend - add (W) marker
+                    markers.append("(D-W)")
                 elif forbidden_shift_types:
-                    # Person has forbidden shifts - show (D) with shift types
-                    forbidden_display = "(D) " + "".join(forbidden_shift_types)
-                    person_data.append(forbidden_display)
-                else:
-                    # Convert shifts to M, P, N, MP format
-                    shift_codes = []
-                    for shift in shifts:
-                        if shift == 'morning':
-                            shift_codes.append('M')
-                            morning_count += 1
-                        elif shift == 'afternoon':
-                            shift_codes.append('P')
-                            afternoon_count += 1
-                        elif shift == 'mp':
-                            shift_codes.append('MP')
-                            morning_count += 1  # MP counts as both morning and afternoon staff
-                            afternoon_count += 1
-                        elif shift == 'night':
-                            shift_codes.append('N')
-                            night_count += 1
-                    
-                    shift_str = "".join(shift_codes) if shift_codes else ""
-                    
-                    # Add tirocinio marker if person is in training
-                    if is_in_tirocinio:
-                        if shift_str:
-                            # Person has both training and shifts: (T) P
-                            shift_str = f"(T) {shift_str}"
-                        else:
-                            # Person has only training: (T)
-                            shift_str = "(T)"
-                    
+                    # Person has forbidden shifts - add (D) with shift types marker
+                    forbidden_display = "(D-" + "".join(forbidden_shift_types) + ")"
+                    markers.append(forbidden_display)
+                
+                # Add tirocinio marker if person is in training
+                if is_in_tirocinio:
+                    markers.append("(T)")
+                
+                # Combine shift assignments with markers
+                if shift_str and markers:
+                    # Has both shifts and markers: "MP, (T)"
+                    person_data.append(f"{', '.join(markers)} {shift_str}")
+                elif shift_str:
+                    # Only shifts: "MP"
                     person_data.append(shift_str)
+                elif markers:
+                    # Only markers: "(T)" or "F" or "(D) MP"
+                    person_data.append(', '.join(markers))
+                else:
+                    # Nothing: empty cell
+                    person_data.append("")
             
             # Find warnings for this date
             # Debug: Check if warnings exist
+            print(f"Checking warnings for date: {date.strftime('%Y-%m-%d')}")
+            print(f"Current warnings: {self.scheduler.warnings}")
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%Y-%m-%d') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
+
+            print(warnings_str)
+
             # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, then person shifts, then Warnings
             row = [
                 date.strftime('%d/%m/%Y'),

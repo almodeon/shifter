@@ -189,7 +189,7 @@ class ShiftAssigner:
                     self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned morning: {best_person} on {date}")
                 else:
                     failure_msg = f"Failed to assign morning shift on {date} (position {i+1})"
-                    self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
+                    self.scheduler.warnings.append(failure_msg)
                     self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
     def ensure_minimum_hours(self, dates, people_list):
