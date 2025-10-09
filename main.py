@@ -52,6 +52,9 @@ class HospitalScheduler:
         # Initialize the logger
         self.logger = Logger(self.settings)
         
+        # Initialize results dictionary
+        self.results = {}  # New property to store results
+        
         self.logger.log('data_loading', 'info', f"Loaded {len(self.required_night_dates)} required night dates")
         self.logger.log('data_loading', 'info', f"Loaded {len(self.festivity_dates)} festivity dates")
         self.logger.log('data_loading', 'info', f"Loaded {len(self.people)} people")
@@ -518,14 +521,23 @@ class HospitalScheduler:
     def export_to_csv(self, output_file, start_date=None, end_date=None):
         """Export schedule to CSV file - delegates to ExportManager"""
         self.export_manager.export_schedule_to_csv(output_file, start_date, end_date)
+        self.results['schedule'] = output_file  # Save the filename in results
 
     def export_staff_statistics_to_csv(self, start_date, end_date, output_file='staff_statistics.csv'):
         """Export detailed staff statistics to CSV file - delegates to ExportManager"""
-        return self.export_manager.export_staff_statistics_to_csv(start_date, end_date, output_file)
+        if self.settings.get('export_staff_statistics', False):  # Check if enabled
+            self.export_manager.export_staff_statistics_to_csv(start_date, end_date, output_file)
+            self.results['staff_statistics'] = output_file  # Save the filename in results
+        else:
+            self.results['staff_statistics'] = None  # Save None if not enabled
 
     def export_all_formats(self, start_date, end_date, base_filename='schedule'):
         """Export schedule in all available formats - delegates to ExportManager"""
-        self.export_manager.export_all(start_date, end_date, base_filename)
+        if self.settings.get('export_all_formats', False):  # Check if enabled
+            self.export_manager.export_all(start_date, end_date, base_filename)
+            self.results['all_formats'] = f"{base_filename}.*"  # Save the base filename in results
+        else:
+            self.results['all_formats'] = None  # Save None if not enabled
 
     def print_summary(self, start_date, end_date):
         """Print summary statistics for each person in table format"""
@@ -1139,7 +1151,7 @@ def main(settings_overrides=None):
     
     # Print summary statistics
     scheduler.print_summary(start_date, end_date)
-    
+
     # Export results
     scheduler.export_to_csv('schedule_output.csv', start_date, end_date)
     scheduler.export_staff_statistics_to_csv(start_date, end_date, 'staff_statistics.csv')
@@ -1147,6 +1159,10 @@ def main(settings_overrides=None):
     # Export debug information if available
     if hasattr(scheduler, 'assignment_failures'):
         scheduler.export_manager.export_assignment_debug('assignment_debug.csv')
+
+    # Save all data to the specified output folder
+    output_folder = 'history'  # Define your output folder name
+    scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
     
     # Save configuration for next time (optional)
     # scheduler.save_config('last_used_config.json')
@@ -1156,7 +1172,7 @@ def main(settings_overrides=None):
 if __name__ == "__main__":
     overrides = {
         'multi_run': {
-            'enabled': False,
+            'enabled': True,
             'max_runs': 100
         },
         'logging': {

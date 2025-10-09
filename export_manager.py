@@ -923,7 +923,11 @@ class ExportManager:
 
     def save_all_data(self, output_folder):
         """Save all input files, settings, output files, and logs to a specified folder."""
-        os.makedirs(output_folder, exist_ok=True)
+        # Get the current date in YYYY-MM-DD format
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        date_folder = os.path.join(output_folder, current_date)  # Create a subfolder with the date
+
+        os.makedirs(date_folder, exist_ok=True)
 
         # Save input files
         input_files = [
@@ -934,10 +938,10 @@ class ExportManager:
         
         for file in input_files:
             if os.path.exists(file):
-                shutil.copy(file, output_folder)
+                shutil.copy(file, date_folder)  # Save to the date subfolder
 
         # Save settings
-        settings_file = os.path.join(output_folder, 'settings.json')
+        settings_file = os.path.join(date_folder, 'settings.json')
         with open(settings_file, 'w') as f:
             json.dump(self.scheduler.settings, f, indent=2)
 
@@ -952,13 +956,13 @@ class ExportManager:
         for file in output_files:
             full_path = os.path.join(self.scheduler.output_dir, file)
             if os.path.exists(full_path):
-                shutil.copy(full_path, output_folder)
+                shutil.copy(full_path, date_folder)  # Save to the date subfolder
 
         # Save logs
-        log_file = os.path.join(output_folder, 'output', 'scheduler_log.txt')
+        log_file = os.path.join(date_folder, 'scheduler_log.txt')
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        with open(log_file, 'w') as f:
+        with open(log_file, 'w', encoding='utf-8') as f:  # Specify utf-8 encoding
             for entry in self.logger.get_all_logs():
                 f.write(f"[{entry['level'].upper()}] [{entry['category']}] {entry['message']}\n")
 
-        self.logger.log('export_notifications', 'info', f"All data saved to {output_folder}")
+        self.logger.log('export_notifications', 'info', f"All data saved to {date_folder}")

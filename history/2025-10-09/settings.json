@@ -1,0 +1,104 @@
+{
+  "min_morning_staff": 2,
+  "target_afternoon_staff": 1,
+  "night_staff": 1,
+  "saturday_morning_staff": 0,
+  "saturday_afternoon_staff": 0,
+  "saturday_mp_staff": 1,
+  "sunday_staff": 1,
+  "festivity_staff": 1,
+  "min_weekly_hours": 34,
+  "max_weekly_hours": 48,
+  "morning_shift_hours": 6,
+  "afternoon_shift_hours": 6,
+  "night_shift_hours": 12,
+  "sunday_mp_shift_hours": 12,
+  "max_weekend_days_per_month": 2,
+  "night_shifts_per_month": 1,
+  "max_consecutive_days": 6,
+  "min_rest_hours_between_shifts": 11,
+  "min_continuous_rest_hours": 24,
+  "weekend_morning_plus_afternoon": true,
+  "night_shifts_only_weekdays": false,
+  "fill_up_to_minimum_hours": true,
+  "prevent_consecutive_weekend_days": true,
+  "data_files": {
+    "people_data_file": "desiderata_original.csv",
+    "night_dates_file": "notti.csv",
+    "festivity_dates_file": "festivi.csv"
+  },
+  "randomize_people_order": true,
+  "randomize_priority_tiebreaking": true,
+  "randomize_date_order": true,
+  "priority_assignment": {
+    "night_priority_enabled": true,
+    "weekend_priority_enabled": true,
+    "priority_weight": 1.0
+  },
+  "workload_balancing": {
+    "enabled": false,
+    "night_burden_coefficient": 1.5,
+    "weekend_burden_coefficient": 0.8,
+    "min_afternoon_shifts": 0,
+    "max_afternoon_compensation": 4
+  },
+  "multi_run": {
+    "enabled": true,
+    "max_runs": 100,
+    "target_fails": 0,
+    "enable_randomization_for_multi_run": true,
+    "silence_output": true,
+    "show_progress_bar": true,
+    "enforce_desiderata": true,
+    "prioritize_minimal_unassigned_shifts": true,
+    "person_scoring": {
+      "enabled": true,
+      "night_score_coeff": 2.0,
+      "weekend_score_coeff": 2.0,
+      "afternoon_score_coeff": 1.0
+    }
+  },
+  "afternoon_balancing": {
+    "enabled": true,
+    "deprioritize_weekly_repeats": true,
+    "consider_weekly_hours": true,
+    "enforce_strict_weekly_balance": true,
+    "consider_weekends_afternoons": false,
+    "give_precedence_to_afternoon_over_morning": true,
+    "prefer_not_in_internship": true,
+    "max_consecutive_afternoons": 1
+  },
+  "logging": {
+    "data_loading": "error",
+    "settings_display": "error",
+    "multi_run_optimization": "error",
+    "night_shift_assignment": "error",
+    "workload_balancing": "error",
+    "weekend_shift_balancing": "error",
+    "fill_up_minimum_hours": "error",
+    "shift_assignment_warnings": "debug",
+    "shift_assignment_debug": "debug",
+    "afternoon_balancing": "error",
+    "constraint_verification": "error",
+    "schedule_display": "error",
+    "summary_statistics": "debug",
+    "export_notifications": "info"
+  },
+  "constraint_system": {
+    "enabled_constraint_groups": [
+      "staffing",
+      "personal",
+      "work_hours",
+      "forbidden",
+      "festivity"
+    ],
+    "disabled_constraints": [],
+    "custom_constraints": {},
+    "severity_levels": {
+      "CRITICAL": true,
+      "HIGH": true,
+      "MEDIUM": true,
+      "LOW": false
+    }
+  }
+}
