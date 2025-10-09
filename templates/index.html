@@ -31,6 +31,48 @@
         .form-group { margin: 6px 0; }
         .settings-section { border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; background: white; }
         .settings-section h3 { margin-top: 0; margin-bottom: 10px; color: #333; font-size: 16px; }
+        
+        /* Detailed Results Panel */
+        .detailed-results { margin-bottom: 20px; }
+        .detailed-results.hidden { display: none; }
+        .detailed-results-content { 
+            border: 1px solid #ddd; 
+            border-radius: 8px; 
+            background: #fafafa; 
+            overflow: hidden;
+        }
+        .staff-stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            font-size: 14px;
+        }
+        .staff-stats-table th,
+        .staff-stats-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .staff-stats-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+        }
+        .staff-stats-table tr:hover {
+            background: #f9f9f9;
+        }
+        .staff-stats-table .number-cell {
+            text-align: center;
+            font-weight: bold;
+        }
+        .staff-stats-table .total-row {
+            background: #e3f2fd;
+            font-weight: bold;
+        }
+        .staff-stats-table .total-row td {
+            border-top: 2px solid #007cba;
+        }
+        
         .advanced-options { margin-top: 20px; }
         .toggle-button { 
             background: #f0f0f0; border: 1px solid #ccc; padding: 10px 15px; 
@@ -195,6 +237,56 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Detailed Results Panel -->
+        {% if status.results and status.results.staff_statistics %}
+        <div class="detailed-results" id="detailedResults">
+            <div class="toggle-button" onclick="toggleDetailedResults()">
+                <span id="detailedToggleIcon">▼</span> 📊 Detailed Staff Statistics
+            </div>
+            
+            <div class="detailed-results-content" id="detailedResultsContent">
+                <table class="staff-stats-table">
+                    <thead>
+                        <tr>
+                            <th>Staff Member</th>
+                            <th>Morning Shifts</th>
+                            <th>Afternoon Shifts</th>
+                            <th>Night Shifts</th>
+                            <th>Weekend Days</th>
+                            <th>Total Hours</th>
+                            <th>Total Shifts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for person in status.results.staff_statistics %}
+                        <tr>
+                            <td>{{ person.name }}</td>
+                            <td class="number-cell">{{ person.morning_shifts or 0 }}</td>
+                            <td class="number-cell">{{ person.afternoon_shifts or 0 }}</td>
+                            <td class="number-cell">{{ person.night_shifts or 0 }}</td>
+                            <td class="number-cell">{{ person.weekend_days or 0 }}</td>
+                            <td class="number-cell">{{ person.total_hours or 0 }}</td>
+                            <td class="number-cell">{{ person.total_shifts or 0 }}</td>
+                        </tr>
+                        {% endfor %}
+                        
+                        {% if status.results.staff_totals %}
+                        <tr class="total-row">
+                            <td><strong>TOTALS</strong></td>
+                            <td class="number-cell">{{ status.results.staff_totals.morning_shifts or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.afternoon_shifts or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.night_shifts or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.weekend_days or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.total_hours or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.total_shifts or 0 }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
         
         <!-- Advanced Options Section -->
         <div class="advanced-options">
@@ -400,6 +492,27 @@
                 icon.textContent = '▲';
             }
         }
+        
+        function toggleDetailedResults() {
+            const content = document.getElementById('detailedResultsContent');
+            const icon = document.getElementById('detailedToggleIcon');
+            
+            if (content.style.display === 'none' || content.style.display === '') {
+                content.style.display = 'block';
+                icon.textContent = '▲';
+            } else {
+                content.style.display = 'none';
+                icon.textContent = '▼';
+            }
+        }
+        
+        // Initialize detailed results as collapsed
+        document.addEventListener('DOMContentLoaded', function() {
+            const detailedContent = document.getElementById('detailedResultsContent');
+            if (detailedContent) {
+                detailedContent.style.display = 'none';
+            }
+        });
         
         function setThisMonth() {
             const now = new Date();

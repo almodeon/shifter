@@ -291,6 +291,41 @@ def process_schedule(request_data):
         scheduler.export_to_csv(os.path.join(output_dir, schedule_file), start_date, end_date)
         scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
         
+        # Get staff statistics for detailed results panel using existing export manager method
+        staff_data = scheduler.export_manager._get_staff_statistics_data(start_date, end_date)
+        
+        # Transform staff_data into format needed for HTML template
+        staff_statistics = []
+        staff_totals = {
+            'morning_shifts': 0,
+            'afternoon_shifts': 0,
+            'night_shifts': 0,
+            'weekend_days': 0,
+            'total_hours': 0,
+            'total_shifts': 0
+        }
+        
+        for person_data in staff_data:
+            person_stats = {
+                'name': person_data[0],           # person_id
+                'total_hours': person_data[1],    # total_hours
+                'morning_shifts': person_data[3], # morning_count
+                'afternoon_shifts': person_data[4], # afternoon_count
+                'night_shifts': person_data[6],   # night_count
+                'weekend_days': person_data[9],   # weekend_days
+                'total_shifts': person_data[3] + person_data[4] + person_data[5] + person_data[6]  # M + P + MP + N
+            }
+            
+            staff_statistics.append(person_stats)
+            
+            # Add to totals
+            staff_totals['morning_shifts'] += person_stats['morning_shifts']
+            staff_totals['afternoon_shifts'] += person_stats['afternoon_shifts']
+            staff_totals['night_shifts'] += person_stats['night_shifts']
+            staff_totals['weekend_days'] += person_stats['weekend_days']
+            staff_totals['total_hours'] += person_stats['total_hours']
+            staff_totals['total_shifts'] += person_stats['total_shifts']
+        
         # Verify constraints to get summary (only if not already in multi-run)
         if not scheduler.settings['multi_run']['enabled']:
             constraint_results = scheduler.verify_constraints(start_date, end_date)
@@ -326,6 +361,8 @@ def process_schedule(request_data):
         results = {
             'summary': summary,
             'constraint_details': constraint_details,
+            'staff_statistics': staff_statistics,
+            'staff_totals': staff_totals,
             'files': [
                 {'name': schedule_file, 'display_name': 'Schedule (CSV)'},
                 {'name': stats_file, 'display_name': 'Staff Statistics (CSV)'}
