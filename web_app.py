@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, redirect, url_for
+from flask import Flask, render_template, request, send_file, jsonify, redirect, url_for, session
 import os
 import tempfile
 import threading
@@ -9,11 +9,43 @@ from data_loader import DataLoader
 from config_manager import ConfigManager  # Move this import to the top
 
 app = Flask(__name__)
+app.secret_key = 'change_this_secret'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Global variables to track job status
 job_status = {'running': False, 'progress': '', 'error': None, 'results': None}
 job_lock = threading.Lock()
+
+PIN_FILE = 'pin_store'
+
+def get_saved_pin():
+    try:
+        with open(PIN_FILE) as f:
+            return f.read().strip()
+    except Exception:
+        return None
+    
+@app.before_request
+def require_login():
+    if request.endpoint not in ('login', 'static') and not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        pin = request.form.get('pin', '')
+        if pin == get_saved_pin():
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            error = 'Invalid PIN'
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -241,24 +273,25 @@ def process_schedule(request_data):
             'logging': {
                 'data_loading': 'error',
                 'settings_display': 'error',
-                'multi_run_optimization': 'info',
+                'multi_run_optimization': 'error',
                 'night_shift_assignment': 'error',
                 'workload_balancing': 'error',
                 'weekend_shift_balancing': 'error',
                 'fill_up_minimum_hours': 'error',
-                'shift_assignment_warnings': 'error',
+                'shift_assignment_warnings': 'debug',
                 'shift_assignment_debug': 'error',
                 'afternoon_balancing': 'error',
                 'constraint_verification': 'error',
                 'schedule_display': 'error',
                 'summary_statistics': 'error',
-                'export_notifications': 'info'
+                'export_notifications': 'error'
             }
         }
         
         with job_lock:
             job_status['progress'] = 'Creating scheduler...'
         
+        print(form_overrides)
         # Create scheduler with PRE-LOADED data and let it use ConfigManager defaults + form overrides
         scheduler = HospitalScheduler(
             people_data=people_data,
@@ -267,7 +300,7 @@ def process_schedule(request_data):
             settings=form_overrides,  # Only pass the form overrides
             config=config
         )
-        
+
         with job_lock:
             job_status['progress'] = 'Generating schedule...'
         
@@ -313,7 +346,11 @@ def process_schedule(request_data):
                 'afternoon_shifts': person_data[4], # afternoon_count
                 'night_shifts': person_data[6],   # night_count
                 'weekend_days': person_data[9],   # weekend_days
-                'total_shifts': person_data[3] + person_data[4] + person_data[5] + person_data[6]  # M + P + MP + N
+                'total_shifts': person_data[3] + person_data[4] + person_data[5] + person_data[6],  # M + P + MP + N
+                'avg_hours_per_week': float(person_data[10]),  # avg_hours_per_week (already formatted as string, convert to float)
+                'ferie_days': person_data[7],     # ferie_count (vacation days)
+                'mp_shifts': person_data[5],      # mp_count (festivity/weekend all-day shifts)
+                'tirocinio_days': person_data[8]  # tirocinio_count (internship days)
             }
             
             staff_statistics.append(person_stats)
@@ -325,6 +362,13 @@ def process_schedule(request_data):
             staff_totals['weekend_days'] += person_stats['weekend_days']
             staff_totals['total_hours'] += person_stats['total_hours']
             staff_totals['total_shifts'] += person_stats['total_shifts']
+            staff_totals['ferie_days'] = staff_totals.get('ferie_days', 0) + person_stats['ferie_days']
+            staff_totals['mp_shifts'] = staff_totals.get('mp_shifts', 0) + person_stats['mp_shifts']
+            staff_totals['tirocinio_days'] = staff_totals.get('tirocinio_days', 0) + person_stats['tirocinio_days']
+        
+        # Calculate average of averages for total row (this is an approximation)
+        total_people = len(staff_statistics)
+        staff_totals['avg_hours_per_week'] = sum(person['avg_hours_per_week'] for person in staff_statistics) / total_people if total_people > 0 else 0
         
         # Verify constraints to get summary (only if not already in multi-run)
         if not scheduler.settings['multi_run']['enabled']:

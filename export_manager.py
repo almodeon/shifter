@@ -3,6 +3,7 @@ import os
 import json
 from datetime import timedelta, datetime
 from typing import List
+import shutil
 
 class ExportManager:
     def __init__(self, scheduler):
@@ -919,3 +920,45 @@ class ExportManager:
                     return True
         
         return False
+
+    def save_all_data(self, output_folder):
+        """Save all input files, settings, output files, and logs to a specified folder."""
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Save input files
+        input_files = [
+            self.scheduler.settings['data_files']['people_data_file'],
+            self.scheduler.settings['data_files']['night_dates_file'],
+            self.scheduler.settings['data_files']['festivity_dates_file']
+        ]
+        
+        for file in input_files:
+            if os.path.exists(file):
+                shutil.copy(file, output_folder)
+
+        # Save settings
+        settings_file = os.path.join(output_folder, 'settings.json')
+        with open(settings_file, 'w') as f:
+            json.dump(self.scheduler.settings, f, indent=2)
+
+        # Save output files
+        output_files = [
+            'schedule_output.csv',
+            'staff_statistics.csv',
+            'multi_run_ranking.csv',
+            'constraint_summary.csv'
+        ]
+        
+        for file in output_files:
+            full_path = os.path.join(self.scheduler.output_dir, file)
+            if os.path.exists(full_path):
+                shutil.copy(full_path, output_folder)
+
+        # Save logs
+        log_file = os.path.join(output_folder, 'output', 'scheduler_log.txt')
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        with open(log_file, 'w') as f:
+            for entry in self.logger.get_all_logs():
+                f.write(f"[{entry['level'].upper()}] [{entry['category']}] {entry['message']}\n")
+
+        self.logger.log('export_notifications', 'info', f"All data saved to {output_folder}")

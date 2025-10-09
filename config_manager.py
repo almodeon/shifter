@@ -418,6 +418,16 @@ class ConfigManager:
                 print(f"  - {error}")
             if len(errors) > 3:
                 print(f"  ... and {len(errors) - 3} more errors")
+
+        # Print all current settings (flattened)
+        print("\n--- ALL CURRENT SETTINGS ---")
+        def _print_settings(d, prefix=""):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    _print_settings(v, prefix + k + ".")
+                else:
+                    print(f"{prefix}{k}: {v}")
+        _print_settings(self.settings)
     
     def get_all_settings(self) -> Dict[str, Any]:
         """Get a copy of all current settings"""

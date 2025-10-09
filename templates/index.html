@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hospital Scheduler</title>
+    <title>Shifter</title>
+    <h1>Shifter</h1>
+    <h2 class="subtitle">A lightweight tool for scheduling small teams.</h2>
     <meta charset="utf-8">
     <style>
         body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -112,12 +114,108 @@
             cursor: pointer; border-radius: 3px; font-size: 12px;
         }
         .quick-date-btn:hover { background: #929292; }
-        h1 { margin-bottom: 25px; color: #333; }
+        h1 { margin-bottom: 10px; color: #333; }
         h3 { margin-bottom: 15px; }
+        #about-what br {
+            margin-bottom: 10px; /* Adjust this value as needed */
+        }
+        .subtitle {
+            margin-bottom: 20px; /* Adjust spacing as needed */
+            color: #555; /* Subtitle color */
+            font-size: 13px; /* Adjust font size as needed */
+            text-align: left; /* Center align the subtitle */
+        }
     </style>
 </head>
 <body>
-    <h1>🏥 Hospital Scheduler</h1>
+
+    <!-- User panel with logout button -->
+    <div style="
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            z-index: 10;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            padding: 10px 18px 10px 18px;
+            display: flex;
+            align-items: center;
+            min-width: 100px;
+            gap: 8px;
+">
+        <span style="margin-right: 12px; color: #333; font-weight: 500; font-size: 15px;">🔒 Session</span>
+        <form action="/logout" method="get" style="display:inline;">
+            <button type="submit" style="background:#d6d6d6; color:rgb(105, 105, 105); border:none; padding:6px 0; border-radius:5px; font-size:13px; font-weight:normal; cursor:pointer; width:90px;">
+                Logout
+            </button>
+        </form>
+        <button type="button" onclick="showAbout()" style="background:#d6d6d6; color:rgb(105, 105, 105); border:none; padding:6px 0; border-radius:5px; font-size:13px; font-weight:normal; cursor:pointer; width:90px;">
+            About
+        </button>
+    </div>
+
+    <!-- About Overlay Panel -->
+    <div id="aboutOverlay" style="
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100vw; height: 100vh;
+        background: rgba(0,0,0,0.25);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    ">
+        <div style="
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+            padding: 18px 24px 28px 24px;
+            max-width: 420px;
+            width: auto; /* Ensure width is auto */
+            margin: auto;
+            position: relative;
+            text-align: left;
+        ">
+            <button onclick="hideAbout()" style="
+                position: absolute; top: 12px; right: -200px;
+                background: none; border: none; font-size: 26px; color: #888; cursor: pointer; line-height: 1;
+                padding: 0;
+            " title="Close">&times;</button>
+            <h2 style="margin-top:0; color:#007cba; margin-bottom: 18px; text-align: center; width: auto;">Shifter</h2>
+            <div style="font-size: 13px; color: #5e5e5e; width: auto;">
+                <div style="display: flex; margin-bottom: 12px;">
+                    <strong style="width: 110px; color: #007cba;">Description:</strong>
+                    <span id="about-what" style="flex:1;">
+                        <i><b>A lightweight tool for scheduling.</b></i><br>
+                        The Hospital Scheduler web application supports the management of hospital staff 
+                        schedules by generating shift assignments that satisfy defined constraints and 
+                        requirements. <br>
+                        The frontend enables users to upload data files, specify scheduling periods, and 
+                        request schedule generation. <br>
+                        The Python backend processes the input data, validates configurations, and 
+                        produces optimized schedules while recording warnings and verifying compliance 
+                        with staffing rules. <br>
+                        <b>Algorithm:</b> A customizable multi-pass greedy algorithm based on constraint satisfaction, with 
+                        prioritization of staffing rules and user preferences.<br>
+                    </span>
+                </div>
+                <div style="display: flex; margin-bottom: 12px;">
+                    <strong style="width: 110px; color: #007cba;">Maintainer:</strong>
+                    <span id="about-who" style="flex:1;">Stefano Seriani</span>
+                </div>
+                <div style="display: flex; margin-bottom: 12px;">
+                    <strong style="width: 110px; color: #007cba;">Contact:</strong>
+                    <span id="about-contact" style="flex:1;">sseriani@units.it</span>
+                </div>
+                <div style="display: flex;">
+                    <strong style="width: 110px; color: #007cba;">Version:</strong>
+                    <span id="about-version" style="flex:1;">0.1.0-prealpha</span>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <form id="schedulerForm" method="POST" enctype="multipart/form-data">
         
@@ -166,7 +264,10 @@
                 <!-- Blue Section - Only Button & Title -->
                 <div class="generate-section">
                     <h3 style="margin-top: 0;">⚡ Generate Schedule</h3>
-                    <button type="submit" id="runButton">Generate Schedule</button>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button type="submit" id="runButton">Generate Schedule</button>
+                        <button type="button" id="resetButton" style="background: #c02419;" onclick="confirmReset()">Reset</button>
+                    </div>
                 </div>
                 
                 <!-- Status & Results - Outside Blue Section -->
@@ -211,11 +312,36 @@
                             {% if status.results.constraint_details %}
                             <h5>Constraint Status:</h5>
                             <div style="margin: 10px 0;">
+                                {% set constraint_explanations = {
+                                    'Weekday Morning Staff': 'Minimum required staff for weekday morning shifts.',
+                                    'Weekday Afternoon Staff': 'Target staff for weekday afternoon shifts.',
+                                    'Saturday Morning Staff': 'Required staff for Saturday morning shifts.',
+                                    'Saturday Afternoon Staff': 'Required staff for Saturday afternoon shifts.',
+                                    'Saturday All-Day Staff': 'Required staff for Saturday all-day (MP) shifts.',
+                                    'Sunday All-Day Staff': 'Required staff for Sunday all-day (MP) shifts.',
+                                    'Festivity All-Day Staff': 'Required staff for festivity/holiday all-day shifts.',
+                                    'Monthly Night Limits': 'Maximum number of night shifts per person per month.',
+                                    'Monthly Weekend Limits': 'Maximum number of weekend days per person per month.',
+                                    'Forbidden Shifts': 'No staff assigned to forbidden shifts or during vacation.',
+                                    'Vacation Compliance': 'No staff assigned during their vacation days.',
+                                    'Night Coverage': 'All required night shifts are covered.',
+                                    'Weekend Coverage': 'All required weekend shifts are covered.',
+                                    'Weekly Hours': 'Weekly working hours are within allowed limits.',
+                                    'Afternoon Balancing': 'Afternoon shifts are balanced across staff.',
+                                    'Night Priority': 'Night shifts are distributed fairly.',
+                                    'Weekend Priority': 'Weekend shifts are distributed fairly.',
+                                    'Festivity Coverage': 'All festivity/holiday shifts are covered.',
+                                    'Target Afternoon Staff': 'Afternoon staff targets are met.',
+                                    'Max Consecutive Days': 'No one exceeds the maximum allowed consecutive working days.',
+                                    'Unassigned Shifts': 'All shifts are assigned to staff.'
+                                } %}
                                 {% for constraint in status.results.constraint_details %}
+                                {% set explanation = constraint_explanations.get(constraint.name, 'Constraint: ' ~ constraint.name) %}
+                                {% set tooltip = explanation ~ ' Status: ' ~ ('SATISFIED. ' if constraint.status == 'PASS' else 'NOT SATISFIED.') %}
                                 <div style="font-size: 14px; margin: 3px 0; display: flex; align-items: center;">
-                                    <span style="margin-right: 8px;">{{ constraint.icon }}</span>
-                                    <span style="flex: 1;">{{ constraint.name }}</span>
-                                    <span style="font-size: 12px; color: {% if constraint.status == 'PASS' %}#4caf50{% else %}#f44336{% endif %};">
+                                    <span style="margin-right: 8px;" title="{{ tooltip }}">{{ constraint.icon }}</span>
+                                    <span style="flex: 1;" title="{{ tooltip }}">{{ constraint.name }}</span>
+                                    <span style="font-size: 12px; color: {% if constraint.status == 'PASS' %}#4caf50{% else %}#f44336{% endif %};" title="{{ tooltip }}">
                                         {{ constraint.status }}
                                     </span>
                                 </div>
@@ -254,7 +380,11 @@
                             <th>Afternoon Shifts</th>
                             <th>Night Shifts</th>
                             <th>Weekend Days</th>
+                            <th>Festivi (MP)</th>
+                            <th>Ferie Days</th>
+                            <th>Tirocinio Days</th>
                             <th>Total Hours</th>
+                            <th>Avg Hours/Week</th>
                             <th>Total Shifts</th>
                         </tr>
                     </thead>
@@ -266,7 +396,11 @@
                             <td class="number-cell">{{ person.afternoon_shifts or 0 }}</td>
                             <td class="number-cell">{{ person.night_shifts or 0 }}</td>
                             <td class="number-cell">{{ person.weekend_days or 0 }}</td>
+                            <td class="number-cell">{{ person.mp_shifts or 0 }}</td>
+                            <td class="number-cell">{{ person.ferie_days or 0 }}</td>
+                            <td class="number-cell">{{ person.tirocinio_days or 0 }}</td>
                             <td class="number-cell">{{ person.total_hours or 0 }}</td>
+                            <td class="number-cell">{{ "%.1f"|format(person.avg_hours_per_week or 0) }}</td>
                             <td class="number-cell">{{ person.total_shifts or 0 }}</td>
                         </tr>
                         {% endfor %}
@@ -278,7 +412,11 @@
                             <td class="number-cell">{{ status.results.staff_totals.afternoon_shifts or 0 }}</td>
                             <td class="number-cell">{{ status.results.staff_totals.night_shifts or 0 }}</td>
                             <td class="number-cell">{{ status.results.staff_totals.weekend_days or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.mp_shifts or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.ferie_days or 0 }}</td>
+                            <td class="number-cell">{{ status.results.staff_totals.tirocinio_days or 0 }}</td>
                             <td class="number-cell">{{ status.results.staff_totals.total_hours or 0 }}</td>
+                            <td class="number-cell">{{ "%.1f"|format(status.results.staff_totals.avg_hours_per_week or 0) }}</td>
                             <td class="number-cell">{{ status.results.staff_totals.total_shifts or 0 }}</td>
                         </tr>
                         {% endif %}
@@ -568,6 +706,23 @@
                         location.reload();
                     }
                 });
+        }
+        
+        function confirmReset() {
+            if (confirm("Are you sure you want to reset the interface? All unsaved data will be lost.")) {
+                window.location.href = "/";
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const aboutOverlay = document.getElementById('aboutOverlay');
+            aboutOverlay.style.display = 'none'; // Ensure it is hidden on load
+        });
+        function showAbout() {
+            document.getElementById('aboutOverlay').style.display = 'flex';
+        }
+        function hideAbout() {
+            document.getElementById('aboutOverlay').style.display = 'none';
         }
     </script>
 </body>

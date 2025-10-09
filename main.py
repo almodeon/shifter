@@ -36,7 +36,7 @@ class HospitalScheduler:
             self.config.update(settings)
             print("✅ Custom settings applied")
         
-        # print(self.config.get_all_settings())
+        self.print_config_summary()
 
         # Validate configuration
         is_valid, errors = self.config.validate_settings()

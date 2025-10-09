@@ -2,6 +2,7 @@ class Logger:
     def __init__(self, settings=None):
         """Initialize logger with settings"""
         self.LOG_LEVELS = {'silence': 0, 'error': 1, 'info': 2, 'debug': 3}
+        self.log_entries = []  # Store log messages
         
         # Default logging settings
         self.logging_settings = {
@@ -27,7 +28,13 @@ class Logger:
         """Log message if it meets the level criteria for the category"""
         category_level = self.logging_settings.get(category, 'info')
         if self.LOG_LEVELS[level] <= self.LOG_LEVELS[category_level]:
+            log_entry = {'level': level, 'category': category, 'message': message}
+            self.log_entries.append(log_entry)  # Store the log message as a dictionary
             print(message)
+    
+    def get_all_logs(self):
+        """Retrieve all log entries"""
+        return self.log_entries
     
     def should_log(self, category, level):
         """Check if we should log at this level for this category"""
