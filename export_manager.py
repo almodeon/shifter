@@ -206,51 +206,86 @@ class ExportManager:
         self.export_schedule_json(json_output_file)
     
     def _get_staff_statistics_data(self, start_date, end_date):
-        """Get staff statistics data for appending to schedule CSV"""
+        """Get staff statistics data for appending to schedule CSV, with detailed breakdowns."""
         total_days = (end_date - start_date).days + 1
         total_weeks = total_days / 7
         all_dates = [start_date + timedelta(days=i) for i in range(total_days)]
-        
+        festivity_dates = set(getattr(self.scheduler, 'festivity_dates', []))
+        holidays = festivity_dates  # alias for clarity
+
         staff_data = []
-        
+
         for person_id in sorted(self.scheduler.people.keys()):
             person = self.scheduler.people[person_id]
-            
-            # Count shifts from schedule (separate counts, no double counting)
+
+            # --- Standard counts ---
             morning_count = 0
             afternoon_count = 0
             night_count = 0
             mp_count = 0
             weekend_days = 0
             shift_hours = 0
-            
+
+            # --- New: Detailed breakdowns ---
+            saturday_m = saturday_p = saturday_mp = 0
+            sunday_m = sunday_p = sunday_mp = 0
+            holiday_m = holiday_p = holiday_mp = 0
+            night_saturday = night_sunday = night_holiday = 0
+
             # Count shifts properly from the schedule
             dates = sorted(self.scheduler.schedule[person_id].keys())
             for date in dates:
                 shifts = self.scheduler.schedule[person_id][date]
+                is_saturday = date.weekday() == 5
+                is_sunday = date.weekday() == 6
+                is_holiday = date in holidays
+
+                # Weekend day logic (unchanged)
                 is_weekend = date.weekday() >= 5
-                
-                # Count weekend days if they have non-night shifts
                 if shifts and is_weekend:
                     non_night_shifts = [s for s in shifts if s not in ['night', 'rest_after_night']]
                     if non_night_shifts:
                         weekend_days += 1
-                
-                # Count each shift type separately and calculate hours from shifts
+
+                # Count each shift type and breakdowns
                 for shift in shifts:
                     if shift == 'morning':
                         morning_count += 1
                         shift_hours += self.scheduler.settings['morning_shift_hours']
+                        if is_saturday:
+                            saturday_m += 1
+                        elif is_sunday:
+                            sunday_m += 1
+                        elif is_holiday:
+                            holiday_m += 1
                     elif shift == 'afternoon':
                         afternoon_count += 1
                         shift_hours += self.scheduler.settings['afternoon_shift_hours']
+                        if is_saturday:
+                            saturday_p += 1
+                        elif is_sunday:
+                            sunday_p += 1
+                        elif is_holiday:
+                            holiday_p += 1
                     elif shift == 'mp':
                         mp_count += 1
                         shift_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                        if is_saturday:
+                            saturday_mp += 1
+                        elif is_sunday:
+                            sunday_mp += 1
+                        elif is_holiday:
+                            holiday_mp += 1
                     elif shift == 'night':
                         night_count += 1
                         shift_hours += self.scheduler.settings['night_shift_hours']
-            
+                        if is_saturday:
+                            night_saturday += 1
+                        elif is_sunday:
+                            night_sunday += 1
+                        elif is_holiday:
+                            night_holiday += 1
+
             # Calculate tirocinio hours and count tirocinio days (NEW)
             tirocinio_hours = 0
             tirocinio_count = 0
@@ -287,22 +322,36 @@ class ExportManager:
             night_priority = person.get('night_priority', 0)
             weekend_priority = person.get('weekend_priority', 0)
             
+            # --- Compose extended stats row ---
             staff_data.append([
                 person_id,                    # 0
                 total_hours,                  # 1
                 vacation_hours,               # 2
-                morning_count,                # 3 - M only (no MP included)
-                afternoon_count,              # 4 - P only (no MP included)
-                mp_count,                     # 5 - MP only
-                night_count,                  # 6 - N
-                ferie_count,                  # 7 - F (vacation days)
-                tirocinio_count,              # 8 - T (tirocinio days)
+                morning_count,                # 3
+                afternoon_count,              # 4
+                mp_count,                     # 5
+                night_count,                  # 6
+                ferie_count,                  # 7
+                tirocinio_count,              # 8
                 weekend_days,                 # 9
                 f"{avg_hours_per_week:.1f}",  # 10
                 night_priority,               # 11
-                weekend_priority              # 12
+                weekend_priority,             # 12
+                # --- Extended breakdowns ---
+                saturday_m,                   # 13
+                saturday_p,                   # 14
+                saturday_mp,                  # 15
+                night_saturday,               # 16
+                sunday_m,                     # 17
+                sunday_p,                     # 18
+                sunday_mp,                    # 19
+                night_sunday,                 # 20
+                holiday_m,                    # 21
+                holiday_p,                    # 22
+                holiday_mp,                   # 23
+                night_holiday                 # 24
             ])
-        
+
         return staff_data
     
     def export_staff_statistics_to_csv(self, start_date, end_date, output_file='staff_statistics.csv'):
@@ -662,9 +711,9 @@ class ExportManager:
         """Export schedule to JSON format"""
         import json
         from datetime import date
-        
+
         output_file = os.path.join(self.scheduler.output_dir, os.path.basename(output_file))
-        
+
         # Convert schedule to JSON-serializable format
         json_schedule = {}
         for person_id, person_schedule in self.scheduler.schedule.items():
@@ -711,6 +760,24 @@ class ExportManager:
         # Holidays (festivity dates)
         holidays_data = [d.strftime('%Y-%m-%d') for d in getattr(self.scheduler, 'festivity_dates', [])]
 
+        # --- NEW: Add statistics (including detailed breakdowns) ---
+        # Use the same logic as _get_staff_statistics_data, but export as dict keyed by person_id
+        from datetime import timedelta
+        start_date = min([min(person_schedule.keys()) for person_schedule in self.scheduler.schedule.values()])
+        end_date = max([max(person_schedule.keys()) for person_schedule in self.scheduler.schedule.values()])
+        staff_stats_list = self._get_staff_statistics_data(start_date, end_date)
+        # Compose as dict keyed by person_id for easier JSON use
+        stats_keys = [
+            "person_id", "total_hours", "vacation_hours", "morning_shifts", "afternoon_shifts", "mp_shifts", "night_shifts",
+            "ferie_days", "tirocinio_days", "weekend_days", "avg_hours_per_week", "night_priority", "weekend_priority",
+            "saturday_m", "saturday_p", "saturday_mp", "night_saturday",
+            "sunday_m", "sunday_p", "sunday_mp", "night_sunday",
+            "holiday_m", "holiday_p", "holiday_mp", "night_holiday"
+        ]
+        staff_statistics = {}
+        for row in staff_stats_list:
+            staff_statistics[row[0]] = {k: v for k, v in zip(stats_keys, row)}
+
         # Prepare complete export data
         export_data = {
             'schedule': json_schedule,
@@ -726,12 +793,14 @@ class ExportManager:
             'desiderata': desiderata_data,
             'vacations': vacations_data,
             'holidays': holidays_data,
+            # --- NEW: statistics ---
+            'staff_statistics': staff_statistics
         }
 
         # Write to JSON file
         with open(output_file, 'w', encoding='utf-8') as file:
             json.dump(export_data, file, indent=2, ensure_ascii=False)
-        
+
         self.logger.log('export_notifications', 'info', f"Schedule exported to JSON: {output_file}")
     
     def export_all(self, start_date, end_date, base_filename='schedule'):

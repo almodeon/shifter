@@ -296,6 +296,78 @@ class ScheduleDocxCreator:
         doc.save(self.doc_path)
         print(f"{self.doc_path} created.")
 
+        # --- ADD SUMMARY TABLE FOR WEEKEND/NOTTE SHIFTS ---
+        # Load statistics from JSON if available
+        with open(self.json_path, encoding="utf-8") as f:
+            data = json.load(f)
+        staff_stats = data.get("staff_statistics", {})
+        people_ids = sorted(staff_stats.keys())
+
+        # Prepare summary data
+        summary = []
+        for pid in people_ids:
+            stats = staff_stats[pid]
+            # Saturday shifts
+            sabato = []
+            sabato += ["X" for _ in range(stats.get("saturday_m", 0))]
+            sabato += ["X" for _ in range(stats.get("saturday_p", 0))]
+            sabato += ["X̲" for _ in range(stats.get("saturday_mp", 0))]  # Underlined X for MP
+            sabato += ["X̲" for _ in range(stats.get("night_saturday", 0))]  # Underlined X for night
+
+            # Holidays (holidays + Sundays)
+            festivo = []
+            festivo += ["X" for _ in range(stats.get("holiday_m", 0))]
+            festivo += ["X" for _ in range(stats.get("holiday_p", 0))]
+            festivo += ["X̲" for _ in range(stats.get("holiday_mp", 0))]
+            festivo += ["X̲" for _ in range(stats.get("night_holiday", 0))]
+            festivo += ["X" for _ in range(stats.get("sunday_m", 0))]
+            festivo += ["X" for _ in range(stats.get("sunday_p", 0))]
+            festivo += ["X̲" for _ in range(stats.get("sunday_mp", 0))]
+            festivo += ["X̲" for _ in range(stats.get("night_sunday", 0))]
+
+            # Nights (all nights)
+            notte = ["X̲" for _ in range(stats.get("night_shifts", 0))]
+
+            # Totals
+            tot_we_notti = (
+                stats.get("saturday_m", 0) + stats.get("saturday_p", 0) +
+                stats.get("saturday_mp", 0) + stats.get("night_saturday", 0) +
+                stats.get("holiday_m", 0) + stats.get("holiday_p", 0) +
+                stats.get("holiday_mp", 0) + stats.get("night_holiday", 0) +
+                stats.get("sunday_m", 0) + stats.get("sunday_p", 0) +
+                stats.get("sunday_mp", 0) + stats.get("night_sunday", 0) +
+                stats.get("night_shifts", 0)
+            )
+
+            summary.append({
+                "person": pid,
+                "sabato": " ".join(sabato) if sabato else "-",
+                "festivo": " ".join(festivo) if festivo else "-",
+                "notte": " ".join(notte) if notte else "-",
+                "tot_we_notti": tot_we_notti
+            })
+
+        # Add the summary table to the doc
+        p = doc.add_paragraph("\n\n")
+        table2 = doc.add_table(rows=1 + len(summary), cols=5)
+        table2.style = "Table Grid"
+        headers = ["PERSONA", "SABATO", "FESTIVO", "NOTTE", "TOT WE/NOTTI"]
+        for i, h in enumerate(headers):
+            cell = table2.cell(0, i)
+            cell.text = h
+            for run in cell.paragraphs[0].runs:
+                run.bold = True
+
+        for row_idx, row in enumerate(summary, 1):
+            table2.cell(row_idx, 0).text = row["person"]
+            table2.cell(row_idx, 1).text = row["sabato"]
+            table2.cell(row_idx, 2).text = row["festivo"]
+            table2.cell(row_idx, 3).text = row["notte"]
+            table2.cell(row_idx, 4).text = str(row["tot_we_notti"])
+
+        doc.save(self.doc_path)
+        print(f"{self.doc_path} created.")
+
 if __name__ == "__main__":
     # Example usage with custom settings
     creator = ScheduleDocxCreator(
