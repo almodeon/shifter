@@ -200,6 +200,10 @@ class ExportManager:
                             writer.writerow(stats_row)
         
         self.logger.log('export_notifications', 'info', f"Schedule exported to {output_file}")
+
+        # Export JSON with the same base filename
+        json_output_file = os.path.splitext(output_file)[0] + '.json'
+        self.export_schedule_json(json_output_file)
     
     def _get_staff_statistics_data(self, start_date, end_date):
         """Get staff statistics data for appending to schedule CSV"""
@@ -663,14 +667,50 @@ class ExportManager:
         
         # Convert schedule to JSON-serializable format
         json_schedule = {}
-        
         for person_id, person_schedule in self.scheduler.schedule.items():
             json_schedule[person_id] = {}
             for date_obj, shifts in person_schedule.items():
-                # Convert date to string for JSON serialization
                 date_str = date_obj.strftime('%Y-%m-%d')
                 json_schedule[person_id][date_str] = shifts
-        
+
+        # --- NEW: Collect extra data ---
+        # Tirocinio (internships)
+        tirocinio_data = {}
+        for person_id, person in self.scheduler.people.items():
+            tirocinio_dates = []
+            if 'tirocinio_dates' in person:
+                tirocinio_dates = [d.strftime('%Y-%m-%d') for d in person['tirocinio_dates']]
+            elif 'tirocinio' in person and isinstance(person['tirocinio'], list):
+                tirocinio_dates = [
+                    (d['date'].strftime('%Y-%m-%d') if isinstance(d, dict) and 'date' in d else str(d))
+                    for d in person['tirocinio']
+                ]
+            tirocinio_data[person_id] = tirocinio_dates
+
+        # Desiderata (forbidden shifts)
+        desiderata_data = {}
+        for person_id, person in self.scheduler.people.items():
+            forbidden = []
+            for entry in person.get('forbidden_shifts', []):
+                if entry and 'date' in entry and 'shifts' in entry:
+                    forbidden.append({
+                        'date': entry['date'].strftime('%Y-%m-%d'),
+                        'shifts': entry['shifts']
+                    })
+            desiderata_data[person_id] = forbidden
+
+        # Vacations (days with all shifts forbidden)
+        vacations_data = {}
+        for person_id, person in self.scheduler.people.items():
+            vacs = []
+            for entry in person.get('forbidden_shifts', []):
+                if entry and 'date' in entry and 'shifts' in entry and len(entry['shifts']) == 3:
+                    vacs.append(entry['date'].strftime('%Y-%m-%d'))
+            vacations_data[person_id] = vacs
+
+        # Holidays (festivity dates)
+        holidays_data = [d.strftime('%Y-%m-%d') for d in getattr(self.scheduler, 'festivity_dates', [])]
+
         # Prepare complete export data
         export_data = {
             'schedule': json_schedule,
@@ -680,9 +720,14 @@ class ExportManager:
             'required_night_dates': [d.strftime('%Y-%m-%d') for d in self.scheduler.required_night_dates],
             'export_timestamp': str(datetime.now()),
             'people_count': len(self.scheduler.people),
-            'total_warnings': len(self.scheduler.warnings)
+            'total_warnings': len(self.scheduler.warnings),
+            # --- NEW: extra data ---
+            'tirocinio': tirocinio_data,
+            'desiderata': desiderata_data,
+            'vacations': vacations_data,
+            'holidays': holidays_data,
         }
-        
+
         # Write to JSON file
         with open(output_file, 'w', encoding='utf-8') as file:
             json.dump(export_data, file, indent=2, ensure_ascii=False)
