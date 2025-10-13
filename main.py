@@ -1024,10 +1024,10 @@ def main(settings_overrides=None):
             }
         },
     }
-    
+    print(settings_overrides)
     # Merge base settings with overrides
     settings = merge_settings(base_settings, settings_overrides)
-    
+    print(settings)
     # Option 3: Use configuration file
     config_file = None  # or 'my_config.json'
     
@@ -1054,10 +1054,10 @@ def main(settings_overrides=None):
     if preset:
         config.apply_preset(preset)
     
-    # Get the configured file names from config manager
-    people_file = config.get('data_files.people_data_file')
-    night_file = config.get('data_files.night_dates_file')
-    festivity_file = config.get('data_files.festivity_dates_file')
+    # --- CHANGED: Get file names from settings, not config ---
+    people_file = settings['data_files']['people_data_file']
+    night_file = settings['data_files']['night_dates_file']
+    festivity_file = settings['data_files']['festivity_dates_file']
     
     # Load data files directly with specified extensions
     people_data = data_loader.load_people_data(people_file, log_level='error')
@@ -1072,7 +1072,7 @@ def main(settings_overrides=None):
                 people_data = data_loader.load_people_data(alt_file, log_level='error')
                 if people_data and len(people_data) >= 2:
                     break
-    
+
     print(f"👥 Loaded {len(people_data)} people from {people_file}")
 
     night_dates = data_loader.load_night_dates(night_file, log_level='error')
@@ -1087,7 +1087,7 @@ def main(settings_overrides=None):
                 night_dates = data_loader.load_night_dates(alt_file, log_level='error')
                 if night_dates:
                     break
-    
+
     print(f"🌙 Loaded {len(night_dates)} night dates from {night_file}")
     
     # Load festivity dates
@@ -1103,7 +1103,7 @@ def main(settings_overrides=None):
                 festivity_dates = data_loader.load_festivity_dates(alt_file, log_level='error')
                 if festivity_dates:
                     break
-    
+
     print(f"🎉 Loaded {len(festivity_dates)} festivity dates from {festivity_file}")
 
     # Validate loaded data
@@ -1113,9 +1113,9 @@ def main(settings_overrides=None):
         for error in validation_errors:
             print(f"   {error}")
     
-    # Define scheduling period (example: October 2025)
-    start_date = datetime(2025, 10, 1).date()
-    end_date = datetime(2025, 10, 31).date()
+    # Define scheduling period (example: November 2025)
+    start_date = datetime(2025, 11, 1).date()
+    end_date = datetime(2025, 11, 30).date()
     
     # Create scheduler instance with actual data
     scheduler = HospitalScheduler(
@@ -1171,9 +1171,14 @@ def main(settings_overrides=None):
 
 if __name__ == "__main__":
     overrides = {
+        'data_files': {
+            'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
+            'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
+            'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
+        },
         'multi_run': {
             'enabled': True,
-            'max_runs': 100
+            'max_runs': 1000
         },
         'logging': {
             'data_loading': 'error',              

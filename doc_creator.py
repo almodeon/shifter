@@ -19,7 +19,8 @@ class ScheduleDocxCreator:
         column_widths=None,
         weekend_color="D6E3BC",
         holiday_color="D6E3BC",
-        night_shift_labels=None  # NEW: setting for night shift labels
+        night_shift_labels=None,
+        hide_vacation_desiderata=True  # Option to hide desiderata for vacation days
     ):
         self.json_path = json_path
         self.doc_path = doc_path
@@ -59,6 +60,7 @@ class ScheduleDocxCreator:
             "Saturday": "Sabato",
             "Sunday": "Domenica",
         }
+        self.hide_vacation_desiderata = hide_vacation_desiderata
 
     def set_row_bg_color(self, row, color_hex):
         for cell in row.cells:
@@ -91,9 +93,12 @@ class ScheduleDocxCreator:
                     ids.append(pid)
         return ids
 
-    def get_desiderata(self, date_str, desiderata, people_ids):
+    def get_desiderata(self, date_str, desiderata, people_ids, vacation_pids=None):
         result = []
         for pid in people_ids:
+            # Skip if hiding desiderata for vacation and person is on vacation
+            if self.hide_vacation_desiderata and vacation_pids and pid in vacation_pids:
+                continue
             for entry in desiderata.get(pid, []):
                 if entry["date"] == date_str:
                     for s in entry["shifts"]:
@@ -226,27 +231,26 @@ class ScheduleDocxCreator:
             pomeriggio = ", ".join(self.get_shift_people(schedule, people_ids, date_str, "afternoon"))
             notte_people = self.get_shift_people(schedule, people_ids, date_str, "night")
             notte = ", ".join(notte_people)
-            desiderata_cell = self.get_desiderata(date_str, desiderata, people_ids)
+            # --- Find vacation pids for this date BEFORE calling get_desiderata ---
+            vacation_pids = []
+            for pid in people_ids:
+                ferie_entries = desiderata.get(pid, [])
+                for entry in ferie_entries:
+                    if entry["date"] == date_str and set(entry.get("shifts", [])) == {"morning", "afternoon", "night"}:
+                        vacation_pids.append(pid)
+                        break
+            desiderata_cell = self.get_desiderata(date_str, desiderata, people_ids, vacation_pids)
             tirocinio_cell = self.get_internships(date_str, tirocinio, people_ids)
-
-            # Build ASSENZE column with MONTO/SMONTO NOTTE logic
+            # --- ASSENZE: Only MONTO/SMONTO NOTTE and people on vacation ---
             assenze_labels = []
-            # Add MONTO NOTTE for people on night shift today
             for pid in night_monto_map.get(date_str, []):
                 assenze_labels.append(f"{pid} ({self.night_shift_labels['start']})")
-            # Add SMONTO NOTTE for people who smont night today
             for pid in night_smonta_map.get(date_str, []):
                 assenze_labels.append(f"{pid} ({self.night_shift_labels['end']})")
-            # Add other absentees (people not present in any shift)
-            present = set()
-            for pid in people_ids:
-                shifts = schedule[pid].get(date_str, [])
-                if shifts:
-                    present.add(pid)
-            absentees = [pid for pid in people_ids if pid not in present and pid not in night_monto_map.get(date_str, []) and pid not in night_smonta_map.get(date_str, [])]
-            assenze_labels.extend(absentees)
+            for pid in vacation_pids:
+                if pid not in assenze_labels:
+                    assenze_labels.append(pid)
             assenze = ", ".join(assenze_labels)
-
             cells = [giorno, mattino, pomeriggio, notte, desiderata_cell, tirocinio_cell, assenze]
             tr = table.add_row().cells
             for i, val in enumerate(cells):
@@ -328,15 +332,21 @@ class ScheduleDocxCreator:
             # Nights (all nights)
             notte = ["X̲" for _ in range(stats.get("night_shifts", 0))]
 
-            # Totals
-            tot_we_notti = (
-                stats.get("saturday_m", 0) + stats.get("saturday_p", 0) +
-                stats.get("saturday_mp", 0) + stats.get("night_saturday", 0) +
-                stats.get("holiday_m", 0) + stats.get("holiday_p", 0) +
-                stats.get("holiday_mp", 0) + stats.get("night_holiday", 0) +
-                stats.get("sunday_m", 0) + stats.get("sunday_p", 0) +
-                stats.get("sunday_mp", 0) + stats.get("night_sunday", 0) +
-                stats.get("night_shifts", 0)
+            # Totals in hours (MP and N = 12h, M or P = 6h)
+            tot_we_notti_hours = (
+                stats.get("saturday_m", 0) * 6 +
+                stats.get("saturday_p", 0) * 6 +
+                stats.get("saturday_mp", 0) * 12 +
+                stats.get("night_saturday", 0) * 12 +
+                stats.get("holiday_m", 0) * 6 +
+                stats.get("holiday_p", 0) * 6 +
+                stats.get("holiday_mp", 0) * 12 +
+                stats.get("night_holiday", 0) * 12 +
+                stats.get("sunday_m", 0) * 6 +
+                stats.get("sunday_p", 0) * 6 +
+                stats.get("sunday_mp", 0) * 12 +
+                stats.get("night_sunday", 0) * 12 +
+                stats.get("night_shifts", 0) * 12
             )
 
             summary.append({
@@ -344,19 +354,25 @@ class ScheduleDocxCreator:
                 "sabato": " ".join(sabato) if sabato else "-",
                 "festivo": " ".join(festivo) if festivo else "-",
                 "notte": " ".join(notte) if notte else "-",
-                "tot_we_notti": tot_we_notti
+                "tot_we_notti": tot_we_notti_hours  # now in hours
             })
 
         # Add the summary table to the doc
         p = doc.add_paragraph("\n\n")
         table2 = doc.add_table(rows=1 + len(summary), cols=5)
         table2.style = "Table Grid"
+        # Set custom (narrower) column widths for the summary table
+        summary_col_widths = [1.0, 0.7, 0.7, 0.7, 0.9]  # in inches
+
         headers = ["PERSONA", "SABATO", "FESTIVO", "NOTTE", "TOT WE/NOTTI"]
         for i, h in enumerate(headers):
             cell = table2.cell(0, i)
             cell.text = h
             for run in cell.paragraphs[0].runs:
                 run.bold = True
+            # Set column width for header
+            cell.width = Inches(summary_col_widths[i])
+            table2.columns[i].width = Inches(summary_col_widths[i])
 
         for row_idx, row in enumerate(summary, 1):
             table2.cell(row_idx, 0).text = row["person"]
@@ -364,6 +380,25 @@ class ScheduleDocxCreator:
             table2.cell(row_idx, 2).text = row["festivo"]
             table2.cell(row_idx, 3).text = row["notte"]
             table2.cell(row_idx, 4).text = str(row["tot_we_notti"])
+            # Set column widths for each cell in the row
+            for col_idx in range(5):
+                table2.cell(row_idx, col_idx).width = Inches(summary_col_widths[col_idx])
+                table2.columns[col_idx].width = Inches(summary_col_widths[col_idx])
+            # Make row a little thicker by increasing minimum row height
+            tr = table2.rows[row_idx]._tr
+            trPr = tr.get_or_add_trPr()
+            trHeight = OxmlElement('w:trHeight')
+            trHeight.set(qn('w:val'), "400")  # 400 twips ≈ 0.28 cm, adjust as needed
+            trHeight.set(qn('w:hRule'), "atLeast")
+            trPr.append(trHeight)
+
+        # Also set header row height
+        tr = table2.rows[0]._tr
+        trPr = tr.get_or_add_trPr()
+        trHeight = OxmlElement('w:trHeight')
+        trHeight.set(qn('w:val'), "400")
+        trHeight.set(qn('w:hRule'), "atLeast")
+        trPr.append(trHeight)
 
         doc.save(self.doc_path)
         print(f"{self.doc_path} created.")

@@ -240,14 +240,14 @@ class DataLoader:
             weekend_vietati_col = 'Weekend vietati'
             if weekend_vietati_col in row and row[weekend_vietati_col] and str(row[weekend_vietati_col]).strip():
                 weekend_vietati_str = str(row[weekend_vietati_col]).strip()
-                # Split by comma and parse each date or date range
+                # Split by comma and parse each date or date range, strip spaces
                 weekend_strings = [s.strip() for s in weekend_vietati_str.split(',') if s.strip()]
                 for weekend_str in weekend_strings:
                     # Check if it's a date range
                     if '-' in weekend_str:
-                        start_date_str, end_date_str = weekend_str.split('-', 1)
-                        start_date = self._parse_date(start_date_str.strip())
-                        end_date = self._parse_date(end_date_str.strip())
+                        start_date_str, end_date_str = [s.strip() for s in weekend_str.split('-', 1)]
+                        start_date = self._parse_date(start_date_str)
+                        end_date = self._parse_date(end_date_str)
                         
                         if start_date and end_date:
                             # Generate all dates in the range
@@ -256,8 +256,7 @@ class DataLoader:
                                 forbidden_weekends.append(current_date)
                                 current_date += timedelta(days=1)
                     else:
-                        # Single date
-                        parsed_date = self._parse_date(weekend_str)
+                        parsed_date = self._parse_date(weekend_str.strip())
                         if parsed_date:
                             forbidden_weekends.append(parsed_date)
             
@@ -299,15 +298,14 @@ class DataLoader:
         tirocinio_dates = []
         
         try:
-            # Split by comma and parse each date or date range
+            # Split by comma and parse each date or date range, strip spaces
             date_strings = [d.strip() for d in tirocinio_str.split(',') if d.strip()]
-            
             for date_str in date_strings:
                 # Check if it's a date range (contains hyphen)
                 if '-' in date_str:
-                    start_date_str, end_date_str = date_str.split('-', 1)
-                    start_date = self._parse_date(start_date_str.strip())
-                    end_date = self._parse_date(end_date_str.strip())
+                    start_date_str, end_date_str = [s.strip() for s in date_str.split('-', 1)]
+                    start_date = self._parse_date(start_date_str)
+                    end_date = self._parse_date(end_date_str)
                     
                     if start_date and end_date:
                         # Generate all dates in the range
@@ -316,8 +314,7 @@ class DataLoader:
                             tirocinio_dates.append(current_date)
                             current_date += timedelta(days=1)
                 else:
-                    # Single date
-                    tirocinio_date = self._parse_date(date_str)
+                    tirocinio_date = self._parse_date(date_str.strip())
                     if tirocinio_date:
                         tirocinio_dates.append(tirocinio_date)
                         
@@ -529,17 +526,16 @@ class DataLoader:
         forbidden_shifts = []
         
         try:
-            # Split by comma and parse each date or date range
+            # Split by comma and parse each date or date range, strip spaces
             date_strings = [d.strip() for d in vacation_str.split(',') if d.strip()]
-            
             for date_str in date_strings:
                 vacation_dates = []
                 
                 # Check if it's a date range (contains hyphen)
                 if '-' in date_str:
-                    start_date_str, end_date_str = date_str.split('-', 1)
-                    start_date = self._parse_date(start_date_str.strip())
-                    end_date = self._parse_date(end_date_str.strip())
+                    start_date_str, end_date_str = [s.strip() for s in date_str.split('-', 1)]
+                    start_date = self._parse_date(start_date_str)
+                    end_date = self._parse_date(end_date_str)
                     
                     if start_date and end_date:
                         # Generate all dates in the range
@@ -549,7 +545,7 @@ class DataLoader:
                             current_date += timedelta(days=1)
                 else:
                     # Single date
-                    vacation_date = self._parse_date(date_str)
+                    vacation_date = self._parse_date(date_str.strip())
                     if vacation_date:
                         vacation_dates.append(vacation_date)
                 
