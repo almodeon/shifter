@@ -72,9 +72,9 @@ class StaffingConstraint(BaseConstraint):
         all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
         
         for date in all_dates:
+            # print(f"Evaluating {self.constraint_id} for date {date}")
             if self.days_filter(date):
                 staff_count = self._count_staff(scheduler, date)
-                
                 if staff_count < self.min_staff:
                     violations.append(f"{date}: {staff_count}/{self.min_staff} {self.shift_type} staff (under minimum)")
                 
@@ -369,7 +369,7 @@ class ConstraintRulesEngine:
         ))
         
         self.add_constraint(StaffingConstraint(
-            'weekday_afternoon_staff', 'afternoon', 0, settings['target_afternoon_staff'],
+            'weekday_afternoon_staff', 'afternoon', settings['target_afternoon_staff'],
             days_filter=lambda d: d.weekday() < 5,  # Monday-Friday
             severity=ConstraintSeverity.HIGH
         ))

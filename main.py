@@ -1034,7 +1034,7 @@ def main(settings_overrides=None):
         'afternoon_balancing': {
             'enabled': True,           # Enable afternoon shift weekly balancing
             'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
-            'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
+            'consider_weekly_hours': False,  # Consider weekly hours in afternoon shift priority
             'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
             'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
             'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
@@ -1259,11 +1259,10 @@ if __name__ == "__main__":
             'shift_assignment_warnings': 'error',
             'shift_assignment_debug': 'error',
             'afternoon_balancing': 'error',
-            'constraint_verification': 'error',
+            'constraint_verification': 'info',
             'schedule_display': 'error',
             'summary_statistics': 'error',
             'export_notifications': 'error'
         },
-        # 'min_morning_staff': 3
     }
     main(overrides)
