@@ -736,15 +736,44 @@ class ExportManager:
                 ]
             tirocinio_data[person_id] = tirocinio_dates
 
-        # Desiderata (forbidden shifts)
+        # Desiderata (forbidden shifts) - ONLY desiderata, NOT ferie, NOT tirocini, ONLY for scheduled dates
         desiderata_data = {}
+        # Collect all scheduled dates for each person
+        scheduled_dates_by_person = {
+            person_id: set([d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)
+                            for d in person_schedule.keys()])
+            for person_id, person_schedule in self.scheduler.schedule.items()
+        }
         for person_id, person in self.scheduler.people.items():
             forbidden = []
+            scheduled_dates = scheduled_dates_by_person.get(person_id, set())
+            # --- Add forbidden shifts as before ---
             for entry in person.get('forbidden_shifts', []):
                 if entry and 'date' in entry and 'shifts' in entry:
+                    shifts_set = set(entry['shifts'])
+                    # Exclude ferie (all 3 shifts forbidden)
+                    if shifts_set == {"morning", "afternoon", "night"}:
+                        continue
+                    # Exclude single 'night' shift on a vacation day
+                    vac_dates = [e['date'] for e in person.get('forbidden_shifts', []) if set(e['shifts']) == {"morning", "afternoon", "night"}]
+                    if shifts_set == {"night"} and entry['date'] in vac_dates:
+                        continue
+                    # Only include if date is in the schedule for this person
+                    entry_date_str = entry['date'].strftime('%Y-%m-%d') if hasattr(entry['date'], 'strftime') else str(entry['date'])
+                    if entry_date_str not in scheduled_dates:
+                        continue
                     forbidden.append({
-                        'date': entry['date'].strftime('%Y-%m-%d'),
+                        'date': entry_date_str,
                         'shifts': entry['shifts']
+                    })
+            # --- Add forbidden weekends as "weekend" shift ---
+            forbidden_weekends = person.get('forbidden_weekends', [])
+            for weekend_date in forbidden_weekends:
+                weekend_date_str = weekend_date.strftime('%Y-%m-%d') if hasattr(weekend_date, 'strftime') else str(weekend_date)
+                if weekend_date_str in scheduled_dates:
+                    forbidden.append({
+                        'date': weekend_date_str,
+                        'shifts': ['weekend']
                     })
             desiderata_data[person_id] = forbidden
 
@@ -753,7 +782,7 @@ class ExportManager:
         for person_id, person in self.scheduler.people.items():
             vacs = []
             for entry in person.get('forbidden_shifts', []):
-                if entry and 'date' in entry and 'shifts' in entry and len(entry['shifts']) == 3:
+                if entry and 'date' in entry and 'shifts' in entry and set(entry['shifts']) == {"morning", "afternoon", "night"}:
                     vacs.append(entry['date'].strftime('%Y-%m-%d'))
             vacations_data[person_id] = vacs
 
@@ -761,12 +790,10 @@ class ExportManager:
         holidays_data = [d.strftime('%Y-%m-%d') for d in getattr(self.scheduler, 'festivity_dates', [])]
 
         # --- NEW: Add statistics (including detailed breakdowns) ---
-        # Use the same logic as _get_staff_statistics_data, but export as dict keyed by person_id
         from datetime import timedelta
         start_date = min([min(person_schedule.keys()) for person_schedule in self.scheduler.schedule.values()])
         end_date = max([max(person_schedule.keys()) for person_schedule in self.scheduler.schedule.values()])
         staff_stats_list = self._get_staff_statistics_data(start_date, end_date)
-        # Compose as dict keyed by person_id for easier JSON use
         stats_keys = [
             "person_id", "total_hours", "vacation_hours", "morning_shifts", "afternoon_shifts", "mp_shifts", "night_shifts",
             "ferie_days", "tirocinio_days", "weekend_days", "avg_hours_per_week", "night_priority", "weekend_priority",
@@ -778,7 +805,6 @@ class ExportManager:
         for row in staff_stats_list:
             staff_statistics[row[0]] = {k: v for k, v in zip(stats_keys, row)}
 
-        # Prepare complete export data
         export_data = {
             'schedule': json_schedule,
             'shift_counts': self.scheduler.shift_counts,
@@ -788,16 +814,13 @@ class ExportManager:
             'export_timestamp': str(datetime.now()),
             'people_count': len(self.scheduler.people),
             'total_warnings': len(self.scheduler.warnings),
-            # --- NEW: extra data ---
             'tirocinio': tirocinio_data,
             'desiderata': desiderata_data,
             'vacations': vacations_data,
             'holidays': holidays_data,
-            # --- NEW: statistics ---
             'staff_statistics': staff_statistics
         }
 
-        # Write to JSON file
         with open(output_file, 'w', encoding='utf-8') as file:
             json.dump(export_data, file, indent=2, ensure_ascii=False)
 

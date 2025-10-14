@@ -82,14 +82,17 @@ class ConfigManager:
                 'enable_randomization_for_multi_run': True,
                 'silence_output': True,
                 'show_progress_bar': True,
-                'enforce_desiderata': True,  # Enforce desiderata compliance in multi-run
-                'prioritize_minimal_unassigned_shifts': True,  # Only consider solutions with minimal unassigned shifts
+                'enforce_desiderata': True,
+                'prioritize_minimal_unassigned_shifts': True,
                 'person_scoring': {
                     'enabled': True,
-                    'night_score_coeff': 2.0,      # Weight for night shifts
-                    'weekend_score_coeff': 2.0,    # Weight for weekend shifts
-                    'afternoon_score_coeff': 1.0   # Weight for afternoon shifts
-                }
+                    'night_score_coeff': 2.0,
+                    'weekend_score_coeff': 2.0,
+                    'afternoon_score_coeff': 1.0
+                },
+                'only_consider_best_passes': True,  # NEW
+                'target_best_pass_runs': 100,       # NEW
+                'accumulate_best_pass_runs': False  # NEW
             },
             
             'afternoon_balancing': {
@@ -239,6 +242,15 @@ class ConfigManager:
             file_name = data_files.get(file_key, '')
             if not isinstance(file_name, str) or not file_name.strip():
                 errors.append(f"data_files.{file_key} must be a non-empty string")
+        
+        # Add validation for new settings if needed
+        multi_run = self.settings.get('multi_run', {})
+        if not isinstance(multi_run.get('only_consider_best_passes', True), bool):
+            errors.append("multi_run.only_consider_best_passes must be a boolean")
+        if not isinstance(multi_run.get('target_best_pass_runs', 100), int):
+            errors.append("multi_run.target_best_pass_runs must be an integer")
+        if not isinstance(multi_run.get('accumulate_best_pass_runs', False), bool):
+            errors.append("multi_run.accumulate_best_pass_runs must be a boolean")
         
         return len(errors) == 0, errors
     

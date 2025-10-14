@@ -20,7 +20,10 @@ class ScheduleDocxCreator:
         weekend_color="D6E3BC",
         holiday_color="D6E3BC",
         night_shift_labels=None,
-        hide_vacation_desiderata=True  # Option to hide desiderata for vacation days
+        hide_vacation_desiderata=True,
+        show_vacations_on_holidays=False,
+        night_shift_color="00AA00",  # color for MONTO/SMONTO NOTTE (default green)
+        compact_desiderata_in_richieste_table=False  # NEW: control desiderata format in richieste table
     ):
         self.json_path = json_path
         self.doc_path = doc_path
@@ -61,6 +64,9 @@ class ScheduleDocxCreator:
             "Sunday": "Domenica",
         }
         self.hide_vacation_desiderata = hide_vacation_desiderata
+        self.show_vacations_on_holidays = show_vacations_on_holidays
+        self.night_shift_color = night_shift_color
+        self.compact_desiderata_in_richieste_table = compact_desiderata_in_richieste_table
 
     def set_row_bg_color(self, row, color_hex):
         for cell in row.cells:
@@ -102,9 +108,12 @@ class ScheduleDocxCreator:
             for entry in desiderata.get(pid, []):
                 if entry["date"] == date_str:
                     for s in entry["shifts"]:
-                        code = self.FORBIDDEN_SHIFT_CODES.get(s)
-                        if code:
-                            result.append(f"{pid} ({code})")
+                        if s == "weekend":
+                            result.append(f"{pid} (NO WEEKEND)")
+                        else:
+                            code = self.FORBIDDEN_SHIFT_CODES.get(s)
+                            if code:
+                                result.append(f"{pid} ({code})")
         return ", ".join(result)
 
     def get_internships(self, date_str, tirocinio, people_ids):
@@ -134,6 +143,87 @@ class ScheduleDocxCreator:
             else:
                 result.append(pid)
         return ", ".join(result)
+
+    def compact_tirocinio_ranges(self, tirocinio_days, all_dates, holidays):
+        """
+        Given a list of tirocinio days (YYYY-MM-DD), compact into ranges,
+        including weekends/holidays that are surrounded by tirocinio days.
+        Returns a string like "3-28" if all days are covered (including surrounded weekends/holidays).
+        """
+        if not tirocinio_days:
+            return "-"
+        # Convert to set of date objects for fast lookup
+        tirocinio_set = set(datetime.strptime(d, "%Y-%m-%d").date() for d in tirocinio_days)
+        all_dates_dt = [datetime.strptime(d, "%Y-%m-%d").date() for d in all_dates]
+        holidays_set = set(datetime.strptime(d, "%Y-%m-%d").date() for d in holidays)
+        # Build a list of booleans: True if tirocinio, False otherwise
+        is_tirocinio = [dt in tirocinio_set for dt in all_dates_dt]
+        # Repeat until stable: mark weekends/holidays as tirocinio if surrounded by tirocinio days
+        changed = True
+        while changed:
+            changed = False
+            for i, dt in enumerate(all_dates_dt):
+                if not is_tirocinio[i]:
+                    is_weekend_or_holiday = dt.weekday() >= 5 or dt in holidays_set
+                    if is_weekend_or_holiday:
+                        # Find previous tirocinio day
+                        prev_idx = i - 1
+                        while prev_idx >= 0 and (all_dates_dt[prev_idx].weekday() >= 5 or all_dates_dt[prev_idx] in holidays_set):
+                            prev_idx -= 1
+                        # Find next tirocinio day
+                        next_idx = i + 1
+                        while next_idx < len(all_dates_dt) and (all_dates_dt[next_idx].weekday() >= 5 or all_dates_dt[next_idx] in holidays_set):
+                            next_idx += 1
+                        if prev_idx >= 0 and next_idx < len(all_dates_dt):
+                            if is_tirocinio[prev_idx] and is_tirocinio[next_idx]:
+                                is_tirocinio[i] = True
+                                changed = True
+        # Now compact consecutive True into ranges
+        ranges = []
+        i = 0
+        while i < len(all_dates_dt):
+            if is_tirocinio[i]:
+                start = all_dates_dt[i].day
+                end = start
+                while i + 1 < len(all_dates_dt) and is_tirocinio[i + 1]:
+                    i += 1
+                    end = all_dates_dt[i].day
+                if start == end:
+                    ranges.append(f"{start}")
+                else:
+                    ranges.append(f"{start}-{end}")
+            i += 1
+        return ",".join(ranges) if ranges else "-"
+
+    def _desiderata_entry_str(self, day, shifts):
+        """
+        Helper to format a desiderata entry for the richieste table.
+        If compact_desiderata_in_richieste_table is True, returns e.g. 03P, 14PN.
+        If False, returns e.g. 3 (NO POME), 14 (NO POME/NO NOTTE)
+        """
+        # Map shift to code and label
+        shift_map = {
+            "morning": ("M", "NO MATT"),
+            "afternoon": ("P", "NO POME"),
+            "night": ("N", "NO NOTTE"),
+            "mp": ("MP", "NO MP"),
+            "weekend": ("W", "NO WEEKEND"),
+        }
+        if self.compact_desiderata_in_richieste_table:
+            # Compact: 03P, 14PN
+            codes = []
+            for s in shifts:
+                code = shift_map.get(s, (s.upper(), s.upper()))[0]
+                codes.append(code)
+            # Always use two digits for day
+            return f"{int(day):02d}{''.join(codes)}"
+        else:
+            # Verbose: 3 (NO POME), 14 (NO POME/NO NOTTE)
+            labels = []
+            for s in shifts:
+                label = shift_map.get(s, (s.upper(), s.upper()))[1]
+                labels.append(label)
+            return f"{int(day)} ({'/'.join(labels)})"
 
     def create_doc(self):
         # --- LOAD JSON AND PARSE SCHEDULE ---
@@ -231,42 +321,64 @@ class ScheduleDocxCreator:
             pomeriggio = ", ".join(self.get_shift_people(schedule, people_ids, date_str, "afternoon"))
             notte_people = self.get_shift_people(schedule, people_ids, date_str, "night")
             notte = ", ".join(notte_people)
-            # --- Find vacation pids for this date BEFORE calling get_desiderata ---
+            # --- Find vacation pids for this date using the vacations section ---
+            vacations = data.get("vacations", {})
             vacation_pids = []
             for pid in people_ids:
-                ferie_entries = desiderata.get(pid, [])
-                for entry in ferie_entries:
-                    if entry["date"] == date_str and set(entry.get("shifts", [])) == {"morning", "afternoon", "night"}:
-                        vacation_pids.append(pid)
-                        break
+                if date_str in vacations.get(pid, []):
+                    vacation_pids.append(pid)
             desiderata_cell = self.get_desiderata(date_str, desiderata, people_ids, vacation_pids)
             tirocinio_cell = self.get_internships(date_str, tirocinio, people_ids)
             # --- ASSENZE: Only MONTO/SMONTO NOTTE and people on vacation ---
             assenze_labels = []
-            for pid in night_monto_map.get(date_str, []):
-                assenze_labels.append(f"{pid} ({self.night_shift_labels['start']})")
-            for pid in night_smonta_map.get(date_str, []):
-                assenze_labels.append(f"{pid} ({self.night_shift_labels['end']})")
+            # Track which pids are MONTO/SMONTO for colorizing
+            monto_pids = night_monto_map.get(date_str, [])
+            smonto_pids = night_smonta_map.get(date_str, [])
+            for pid in monto_pids:
+                assenze_labels.append((pid, self.night_shift_labels['start']))
+            for pid in smonto_pids:
+                assenze_labels.append((pid, self.night_shift_labels['end']))
+            # Only add vacation pids if allowed by show_vacations_on_holidays or not a weekend/holiday
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            is_weekend = dt.weekday() in (5, 6)
+            is_holiday = date_str in holidays
             for pid in vacation_pids:
-                if pid not in assenze_labels:
-                    assenze_labels.append(pid)
-            assenze = ", ".join(assenze_labels)
-            cells = [giorno, mattino, pomeriggio, notte, desiderata_cell, tirocinio_cell, assenze]
+                if (
+                    self.show_vacations_on_holidays
+                    or (not is_weekend and not is_holiday)
+                ):
+                    if (pid, self.night_shift_labels['start']) not in assenze_labels and (pid, self.night_shift_labels['end']) not in assenze_labels:
+                        assenze_labels.append((pid, None))
+            # --- Write ASSENZE with color for MONTO/SMONTO NOTTE ---
+            cells = [giorno, mattino, pomeriggio, notte, desiderata_cell, tirocinio_cell, ""]
             tr = table.add_row().cells
-            for i, val in enumerate(cells):
+            for i, val in enumerate(cells[:-1]):
                 tr[i].text = val
                 for paragraph in tr[i].paragraphs:
                     for run in paragraph.runs:
                         run.font.name = self.font_name
                 tr[i].width = Inches(self.column_widths[i])
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            if dt.weekday() in (5, 6):
+            # Compose ASSENZE cell with color for MONTO/SMONTO NOTTE
+            assenze_cell = tr[-1]
+            p = assenze_cell.paragraphs[0]
+            for idx2, (pid, label) in enumerate(assenze_labels):
+                if idx2 > 0:
+                    p.add_run(", ")
+                if label:
+                    run = p.add_run(f"{pid} ({label})")
+                    # Colorize MONTO/SMONTO NOTTE
+                    run.font.color.rgb = RGBColor(
+                        int(self.night_shift_color[0:2], 16),
+                        int(self.night_shift_color[2:4], 16),
+                        int(self.night_shift_color[4:6], 16)
+                    )
+                else:
+                    p.add_run(str(pid))
+            assenze_cell.width = Inches(self.column_widths[-1])
+            if is_weekend:
                 self.set_row_bg_color(table.rows[-1], self.weekend_color)
-            elif date_str in holidays:
+            elif is_holiday:
                 self.set_row_bg_color(table.rows[-1], self.holiday_color)
-
-        doc.save(self.doc_path)
-        print(f"{self.doc_path} created.")
 
         # --- ADD SNIPPET AFTER TABLE ---
         p = doc.add_paragraph()
@@ -296,9 +408,6 @@ class ScheduleDocxCreator:
         run6.underline = True
         run6.font.color.rgb = RGBColor(0x00, 0x80, 0x00)  # green
         p.add_run(" Monto/smonto notte")
-
-        doc.save(self.doc_path)
-        print(f"{self.doc_path} created.")
 
         # --- ADD SUMMARY TABLE FOR WEEKEND/NOTTE SHIFTS ---
         # Load statistics from JSON if available
@@ -400,14 +509,101 @@ class ScheduleDocxCreator:
         trHeight.set(qn('w:hRule'), "atLeast")
         trPr.append(trHeight)
 
+        # --- ADD RICHIESTE TABLE ---
+        p = doc.add_paragraph("\n\n")
+        run = p.add_run("RICHIESTE: ")
+        run.bold = True
+        run.underline = True
+
+        # Prepare richieste data
+        desiderata = data.get("desiderata", {})
+        tirocinio = data.get("tirocinio", {})
+        vacations = data.get("vacations", {})
+        people_ids = sorted(schedule.keys())
+
+        richieste_rows = []
+        for pid in people_ids:
+            # Tirocinio: compacted ranges including surrounded weekends/holidays
+            tirocinio_days = tirocinio.get(pid, [])
+            tirocinio_str = self.compact_tirocinio_ranges(
+                tirocinio_days,
+                all_dates,
+                holidays
+            )
+
+            # Desiderata: list of (day, shift) as e.g. 12M, 15N, 18MP
+            desiderata_entries = []
+            weekend_days = set()
+            ferie_dates = set(vacations.get(pid, []))
+            for entry in desiderata.get(pid, []):
+                # Skip if this desiderata is a vacation (all 3 shifts forbidden)
+                if set(entry.get("shifts", [])) == {"morning", "afternoon", "night"}:
+                    continue
+                # Skip if this desiderata is a tirocinio (not present in desiderata, but for safety)
+                # (No standard for tirocinio in desiderata, so nothing to skip here)
+                day = entry["date"].split("-")[2]
+                is_weekend_shift = any(s == "weekend" for s in entry["shifts"])
+                # Only add to desiderata_entries if not a weekend shift
+                if not is_weekend_shift:
+                    desiderata_entries.append(self._desiderata_entry_str(day, entry["shifts"]))
+                # Also collect weekends for desiderata weekend column
+                dt = datetime.strptime(entry["date"], "%Y-%m-%d")
+                if dt.weekday() in (5, 6) or is_weekend_shift:
+                    weekend_days.add(day)
+            desiderata_str = ", ".join(desiderata_entries) if desiderata_entries else "-"
+
+            # Desiderata weekend: group consecutive days
+            weekend_days_sorted = sorted(int(d) for d in weekend_days)
+            weekend_ranges = []
+            if weekend_days_sorted:
+                start = prev = weekend_days_sorted[0]
+                for d in weekend_days_sorted[1:]:
+                    if d == prev + 1:
+                        prev = d
+                    else:
+                        if start == prev:
+                            weekend_ranges.append(f"{start}")
+                        else:
+                            weekend_ranges.append(f"{start}-{prev}")
+                        start = prev = d
+                if start == prev:
+                    weekend_ranges.append(f"{start}")
+                else:
+                    weekend_ranges.append(f"{start}-{prev}")
+            desiderata_weekend_str = ", ".join(weekend_ranges) if weekend_ranges else "-"
+
+            # Ferie: number of days (only weekdays, not weekends/holidays)
+            ferie_count = 0
+            for ferie_date in vacations.get(pid, []):
+                dt = datetime.strptime(ferie_date, "%Y-%m-%d")
+                if dt.weekday() < 5 and ferie_date not in holidays:
+                    ferie_count += 1
+
+            richieste_rows.append([pid, tirocinio_str, desiderata_str, desiderata_weekend_str, str(ferie_count)])
+
+        # Add richieste table
+        table3 = doc.add_table(rows=1 + len(richieste_rows), cols=5)
+        table3.style = "Table Grid"
+        headers = ["NOME", "TIROCINIO", "DESIDERATA", "DESIDERATA WEEKEND", "FERIE"]
+        for i, h in enumerate(headers):
+            cell = table3.cell(0, i)
+            cell.text = h
+            for run in cell.paragraphs[0].runs:
+                run.bold = True
+
+        for row_idx, row in enumerate(richieste_rows, 1):
+            for col_idx, val in enumerate(row):
+                table3.cell(row_idx, col_idx).text = val
+
         doc.save(self.doc_path)
         print(f"{self.doc_path} created.")
+
 
 if __name__ == "__main__":
     # Example usage with custom settings
     creator = ScheduleDocxCreator(
         json_path="output/schedule_output.json",
-        doc_path="output/example.docx",
+        doc_path="output/schedule_output.docx",
         font_name="Calibri",
         font_size=10,
         header_font_size=24,

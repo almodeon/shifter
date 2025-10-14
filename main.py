@@ -141,6 +141,9 @@ class HospitalScheduler:
         enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', False)
         prioritize_minimal_unassigned = self.settings['multi_run'].get('prioritize_minimal_unassigned_shifts', False)
         scoring_enabled = self.settings['multi_run'].get('person_scoring', {}).get('enabled', False)
+        only_consider_best_passes = self.settings['multi_run'].get('only_consider_best_passes', True)
+        target_best_pass_runs = self.settings['multi_run'].get('target_best_pass_runs', 100)
+        accumulate_best_pass_runs = self.settings['multi_run'].get('accumulate_best_pass_runs', False)
         
         if enforce_desiderata:
             self.logger.log('multi_run_optimization', 'info', "Desiderata enforcement: ENABLED - only compliant runs will be considered")
@@ -158,11 +161,13 @@ class HospitalScheduler:
         best_schedule = None
         best_constraint_results = None
         best_passed_count = -1
-        best_unassigned_count = float('inf')
-        best_hour_difference = float('inf')
-        best_discrimination_score = float('inf')  # NEW: Track best discrimination score
+        best_unassigned_count = float('inf')  # <-- ensure initialized
+        best_hour_difference = float('inf')   # <-- ensure initialized
+        best_discrimination_score = float('inf')  # <-- ensure initialized
         all_runs = []
-        
+        max_passed_count = -1  # Track the highest number of passes seen
+        best_pass_runs = 0     # Track number of runs with best passes
+
         # Progress bar settings
         max_runs = self.settings['multi_run']['max_runs']
         show_progress = self.settings['multi_run'].get('show_progress_bar', True)
@@ -196,7 +201,8 @@ class HospitalScheduler:
         
         skipped_runs = 0  # Track runs skipped due to desiderata violations
         
-        for run_id in range(max_runs):
+        run_id = 0
+        while run_id < max_runs:
             self.logger.log('multi_run_optimization', 'debug', f"\nRun {run_id + 1}/{max_runs}...")
             
             try:
@@ -271,53 +277,66 @@ class HospitalScheduler:
                     'success': passed_count == total_constraints and warning_count == 0 and unassigned_count == 0
                 }
                 all_runs.append(run_result)
-                
+
+                # Track the highest number of passes seen
+                if passed_count > max_passed_count:
+                    max_passed_count = passed_count
+                    best_pass_runs = 1
+                elif passed_count == max_passed_count:
+                    best_pass_runs += 1
+
                 # Check if this is the best so far
                 is_better = False
-                
+
+                # Defensive: ensure best_unassigned_count etc. are initialized
+                # (already initialized above, but keep for clarity)
+
                 if prioritize_minimal_unassigned:
-                    # LOGIC: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc), discrimination_score (asc)
                     if unassigned_count < best_unassigned_count:
                         is_better = True
                     elif unassigned_count == best_unassigned_count:
                         if passed_count > best_passed_count:
                             is_better = True
                         elif passed_count == best_passed_count:
-                            if warning_count < len(best_warnings if 'best_warnings' in locals() else []):
+                            if 'best_warnings' in locals():
+                                best_warnings_len = len(best_warnings)
+                            else:
+                                best_warnings_len = float('inf')
+                            if warning_count < best_warnings_len:
                                 is_better = True
-                            elif warning_count == len(best_warnings if 'best_warnings' in locals() else []):
+                            elif warning_count == best_warnings_len:
                                 if hour_difference < best_hour_difference:
                                     is_better = True
                                 elif hour_difference == best_hour_difference and scoring_enabled:
-                                    # NEW: Use discrimination score as final tiebreaker
                                     if discrimination_score < best_discrimination_score:
                                         is_better = True
                 else:
-                    # LOGIC: passed (desc), warnings (asc), unassigned (asc), hour_diff (asc), discrimination_score (asc)
                     if passed_count > best_passed_count:
                         is_better = True
                     elif passed_count == best_passed_count:
-                        if warning_count < len(best_warnings if 'best_warnings' in locals() else []):
+                        if 'best_warnings' in locals():
+                            best_warnings_len = len(best_warnings)
+                        else:
+                            best_warnings_len = float('inf')
+                        if warning_count < best_warnings_len:
                             is_better = True
-                        elif warning_count == len(best_warnings if 'best_warnings' in locals() else []):
+                        elif warning_count == best_warnings_len:
                             if unassigned_count < best_unassigned_count:
                                 is_better = True
                             elif unassigned_count == best_unassigned_count:
                                 if hour_difference < best_hour_difference:
                                     is_better = True
                                 elif hour_difference == best_hour_difference and scoring_enabled:
-                                    # NEW: Use discrimination score as final tiebreaker
                                     if discrimination_score < best_discrimination_score:
                                         is_better = True
-                
+
                 if is_better:
                     best_passed_count = passed_count
                     best_unassigned_count = unassigned_count
                     best_schedule = schedule.copy()
                     best_constraint_results = constraint_results.copy()
                     best_hour_difference = hour_difference
-                    best_discrimination_score = discrimination_score  # NEW: Track best discrimination score
-                    # Store the best run's state
+                    best_discrimination_score = discrimination_score
                     best_warnings = self.warnings.copy()
                     best_shift_counts = self.shift_counts.copy()
                     self.logger.log('multi_run_optimization', 'info', f"  🎯 New best result!")
@@ -328,19 +347,32 @@ class HospitalScheduler:
                     filled_width = int(progress_width * progress)
                     bar = '█' * filled_width + '░' * (progress_width - filled_width)
                     percent = progress * 100
-                    
+
                     # Add status indicator
                     status = ""
                     if is_better:
                         status = " 🎯"
                     elif failed_count <= self.settings['multi_run']['target_fails']:
                         status = " ✅"
-                    
+
                     # Include skipped runs info if enforcement is enabled
                     skip_info = f" (Skipped: {skipped_runs})" if enforce_desiderata and skipped_runs > 0 else ""
-                    print(f"\rProgress: [{bar}] {run_id + 1}/{max_runs} ({percent:.1f}%) - Best: {best_passed_count}/{total_constraints}{status}{skip_info}", end='', flush=True)
+                    # Show best_pass_runs / target_best_pass_runs in progress bar
+                    best_pass_runs_info = ""
+                    if only_consider_best_passes and accumulate_best_pass_runs:
+                        best_pass_runs_info = f" | Top: {best_pass_runs}/{target_best_pass_runs}"
+                    print(
+                        f"\rProgress: [{bar}] {run_id + 1}/{max_runs} ({percent:.1f}%) - Best: {best_passed_count}/{total_constraints}{status}{skip_info}{best_pass_runs_info}",
+                        end='', flush=True
+                    )
                 
-                # Early termination if target reached
+                # Early termination if target reached (for best pass runs)
+                if accumulate_best_pass_runs and only_consider_best_passes:
+                    if best_pass_runs >= target_best_pass_runs:
+                        self.logger.log('multi_run_optimization', 'info', f"  ✅ Target of {target_best_pass_runs} best-pass runs reached!")
+                        break
+
+                # Early termination if target reached (for fails)
                 if failed_count <= self.settings['multi_run']['target_fails']:
                     self.logger.log('multi_run_optimization', 'info', f"  ✅ Target of ≤{self.settings['multi_run']['target_fails']} failed constraints reached!")
                     break
@@ -348,6 +380,7 @@ class HospitalScheduler:
             except Exception as e:
                 self.logger.log('multi_run_optimization', 'error', f"  ❌ Run failed with exception: {e}")
                 continue
+            run_id += 1
         
         # Clear progress bar line
         if show_progress:
@@ -368,6 +401,11 @@ class HospitalScheduler:
         # Display ranking of all runs
         self.logger.log('multi_run_optimization', 'info', f"\n=== RANKING OF ALL RUNS ===")
         
+        # Filter runs to only those with the highest number of passes if setting is enabled
+        if only_consider_best_passes and all_runs:
+            all_runs = [run for run in all_runs if run['passed_count'] == max_passed_count]
+            self.logger.log('multi_run_optimization', 'info', f"Filtered to {len(all_runs)} runs with best passes ({max_passed_count}/{total_constraints})")
+
         # Sort runs based on priority setting with discrimination score as final tiebreaker
         if prioritize_minimal_unassigned:
             # Sort by: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc), discrimination_score (asc)
@@ -376,7 +414,7 @@ class HospitalScheduler:
                 -x['passed_count'], 
                 x['warning_count'], 
                 x['hour_difference'],
-                x.get('discrimination_score', float('inf'))  # NEW: Add discrimination score to sort key
+                x.get('discrimination_score', float('inf'))
             ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_unassigned_count} unassigned, {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         else:
@@ -386,7 +424,7 @@ class HospitalScheduler:
                 x['warning_count'], 
                 x['unassigned_count'],
                 x['hour_difference'],
-                x.get('discrimination_score', float('inf'))  # NEW: Add discrimination score to sort key
+                x.get('discrimination_score', float('inf'))
             ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         
@@ -684,16 +722,16 @@ class HospitalScheduler:
             ])
         
         # Print table header with MP column
-        print("┌────────┬─────────────┬─────┬─────┬─────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
-        print("│ Person │ Total Hours │  M  │  P  │ MP  │  N  │  F  │  T  │ Weekends │ Avg Hours per Week  │")
-        print("├────────┼─────────────┼─────┼─────┼─────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
+        print("┌────────────┬─────────────┬─────┬─────┬─────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
+        print("│ Person     │ Total Hours │  M  │  P  │ MP  │  N  │  F  │  T  │ Weekends │ Avg Hours per Week  │")
+        print("├────────────┼─────────────┼─────┼─────┼─────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
         
         # Print data rows
         for row in summary_data:
             person, total_h, m, p, mp, n, f, t, weekends, avg = row
-            print(f"│   {person:<4} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {mp:<2} │  {n:<2} │  {f:<2} │  {t:<2} │    {weekends:<5} │        {avg:<12} │")
+            print(f"│ {person:<10} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {mp:<2} │  {n:<2} │  {f:<2} │  {t:<2} │    {weekends:<5} │        {avg:<12} │")
         
-        print("└────────┴─────────────┴─────┴─────┴─────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
+        print("└────────────┴─────────────┴─────┴─────┴─────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
         print("\nLegend: M=Morning, P=Afternoon, MP=Morning+Afternoon combined, N=Night, F=Ferie,\nT=Tirocinio, Weekends=Weekend days worked")
         
         # Print violations if any
@@ -1024,10 +1062,10 @@ def main(settings_overrides=None):
             }
         },
     }
-    print(settings_overrides)
+    
     # Merge base settings with overrides
     settings = merge_settings(base_settings, settings_overrides)
-    print(settings)
+    
     # Option 3: Use configuration file
     config_file = None  # or 'my_config.json'
     
@@ -1163,11 +1201,24 @@ def main(settings_overrides=None):
     # Save all data to the specified output folder
     output_folder = 'history'  # Define your output folder name
     scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
-    
+
     # Save configuration for next time (optional)
     # scheduler.save_config('last_used_config.json')
-    
+
     scheduler._log('data_loading', 'info', "Schedule generation completed!")
+
+    # --- DOCX EXPORT (add this block) ---
+    try:
+        from doc_creator import ScheduleDocxCreator
+        docx_creator = ScheduleDocxCreator(
+            json_path="output/schedule_output.json",
+            doc_path="output/schedule_output.docx"
+            # Optionally add more settings here if needed
+        )
+        docx_creator.create_doc()
+        print("✅ DOCX exported to output/schedule_output.docx")
+    except Exception as e:
+        print(f"❌ DOCX export failed: {e}")
 
 if __name__ == "__main__":
     overrides = {
@@ -1177,8 +1228,11 @@ if __name__ == "__main__":
             'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
         },
         'multi_run': {
-            'enabled': True,
-            'max_runs': 1000
+            'enabled': False,
+            'max_runs': 10000,
+            'only_consider_best_passes': True,
+            'target_best_pass_runs': 100,
+            'accumulate_best_pass_runs': True
         },
         'logging': {
             'data_loading': 'error',              
@@ -1187,7 +1241,7 @@ if __name__ == "__main__":
             'night_shift_assignment': 'error',
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
-            'fill_up_minimum_hours': 'error',
+            'fill_up_minimum_hours': 'debug',
             'shift_assignment_warnings': 'debug',
             'shift_assignment_debug': 'debug',
             'afternoon_balancing': 'error',
