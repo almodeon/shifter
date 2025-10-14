@@ -17,7 +17,7 @@ class ConfigManager:
         """Return default settings configuration"""
         base_settings = {
             # Staff requirements
-            'min_morning_staff': 3,
+            'min_morning_staff': 2,
             'target_afternoon_staff': 1,
             'night_staff': 1,
             'saturday_morning_staff': 0,
@@ -36,7 +36,7 @@ class ConfigManager:
             
             # Monthly and daily limits
             'max_weekend_days_per_month': 2,
-            'night_shifts_per_month': 0,
+            'night_shifts_per_month': 1,
             'max_afternoon_shifts_per_week': 1,
             'max_consecutive_days': 6,
             'min_rest_hours_between_shifts': 11,
@@ -47,13 +47,13 @@ class ConfigManager:
             'night_shifts_only_weekdays': False,
             'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
             'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
-            'strict_night_shift_balancing': True,  # Enforce strict night shift distribution (always get the person with the least nights so far)
+            'strict_night_shift_balancing': False,  # Enforce strict night shift distribution (always get the person with the least nights so far)
 
             # Data file names (with extensions)
             'data_files': {
-                'people_data_file': 'desiderata_default.csv',     # People/constraints data file with extension
-                'night_dates_file': 'notti_default.csv',          # Required night dates file with extension
-                'festivity_dates_file': 'festivi_default.csv',     # Festivity dates file with extension
+                'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
+                'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
+                'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
             },
             
             # Bias mitigation settings
@@ -79,7 +79,7 @@ class ConfigManager:
             # Multi-run optimization settings
             'multi_run': {
                 'enabled': True,
-                'max_runs': 100,
+                'max_runs': 1000,
                 'target_fails': 0,
                 'enable_randomization_for_multi_run': True,
                 'silence_output': True,
@@ -94,13 +94,13 @@ class ConfigManager:
                 },
                 'only_consider_best_passes': True,  # NEW
                 'target_best_pass_runs': 100,       # NEW
-                'accumulate_best_pass_runs': False  # NEW
+                'accumulate_best_pass_runs': True  # NEW
             },
             
             'afternoon_balancing': {
                 'enabled': True,           # Enable afternoon shift weekly balancing
                 'deprioritize_weekly_repeats': True,  # Lower priority for people with afternoon shifts this week
-                'consider_weekly_hours': True,  # Consider weekly hours in afternoon shift priority
+                'consider_weekly_hours': False,  # Consider weekly hours in afternoon shift priority
                 'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
                 'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
                 'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts

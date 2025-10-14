@@ -431,7 +431,6 @@
             <div class="toggle-button" onclick="toggleAdvanced()">
                 <span id="toggleIcon">▼</span> Advanced Options
             </div>
-            
             <div class="advanced-content" id="advancedContent">
                 <div class="advanced-columns">
                     <!-- Left Column -->
@@ -442,7 +441,7 @@
                             <div class="three-column">
                                 <div class="form-group">
                                     <label title="Minimum number of staff required for morning shifts on weekdays">Minimum morning staff:</label>
-                                    <input type="number" name="min_morning_staff" value="3" min="0" max="10">
+                                    <input type="number" name="min_morning_staff" value="2" min="0" max="10">
                                 </div>
                                 <div class="form-group">
                                     <label title="Target number of staff for afternoon shifts on weekdays">Target afternoon staff:</label>
@@ -487,6 +486,22 @@
                                     <label title="Maximum number of night shifts a person can work per month">Max night shifts/month:</label>
                                     <input type="number" name="night_shifts_per_month" value="1" min="0" max="10">
                                 </div>
+                                <div class="form-group">
+                                    <label title="Maximum number of afternoon shifts per week">Max afternoon shifts/week:</label>
+                                    <input type="number" name="max_afternoon_shifts_per_week" value="1" min="0" max="10">
+                                </div>
+                                <div class="form-group">
+                                    <label title="Prevent working both Saturday and Sunday in the same weekend">
+                                        <input type="checkbox" name="prevent_consecutive_weekend_days">
+                                        <span class="checkbox-label">Prevent Consecutive Weekend Days</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Strict night shift balancing (always assign to person with least nights)">
+                                        <input type="checkbox" name="strict_night_shift_balancing">
+                                        <span class="checkbox-label">Strict Night Shift Balancing</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         
@@ -528,7 +543,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label title="Number of schedule generation attempts (more runs = better results but longer time)">Maximum Runs:</label>
-                                    <input type="number" name="max_runs" value="100" min="1" max="1000">
+                                    <input type="number" name="max_runs" value="1000" min="1" max="10000">
                                 </div>
                                 <div class="form-group">
                                     <label title="Only consider schedules that strictly follow forbidden shifts and vacation constraints">
@@ -538,8 +553,25 @@
                                 </div>
                                 <div class="form-group">
                                     <label title="Prioritize solutions with the fewest unassigned shifts over other metrics">
-                                        <input type="checkbox" name="prioritize_minimal_unassigned_shifts" checked> 
+                                        <input type="checkbox" name="prioritize_minimal_unassigned_shifts" checked>
                                         <span class="checkbox-label">Prioritize Minimal Unassigned</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Only consider runs with the highest number of passed constraints">
+                                        <input type="checkbox" name="only_consider_best_passes" checked>
+                                        <span class="checkbox-label">Only Consider Best Passes</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Target number of best-pass runs to accumulate before stopping">
+                                        <input type="number" name="target_best_pass_runs" value="100" min="1" max="10000">
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Accumulate best-pass runs before stopping early">
+                                        <input type="checkbox" name="accumulate_best_pass_runs">
+                                        <span class="checkbox-label">Accumulate Best Pass Runs</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
@@ -587,7 +619,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label title="Only assign afternoon shifts to people with the lowest weekly afternoon count">
-                                        <input type="checkbox" name="enforce_strict_weekly_balance" checked> 
+                                        <input type="checkbox" name="enforce_strict_weekly_balance" checked>
                                         <span class="checkbox-label">Enforce Strict Weekly Balance</span>
                                     </label>
                                 </div>
@@ -607,6 +639,17 @@
                                     <label title="Prefer people not currently in internship for afternoon shift assignments">
                                         <input type="checkbox" name="prefer_not_in_internship" checked> 
                                         <span class="checkbox-label">Prefer Not in Internship</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Maximum consecutive afternoon shifts per person">
+                                        <input type="number" name="max_consecutive_afternoons" value="1" min="0" max="7">
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Allow consecutive afternoon shifts">
+                                        <input type="checkbox" name="allow_consecutive_afternoons">
+                                        <span class="checkbox-label">Allow Consecutive Afternoons</span>
                                     </label>
                                 </div>
                             </div>

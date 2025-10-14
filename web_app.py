@@ -54,12 +54,21 @@ def index():
     if request.method == 'GET':
         # Set default dates (current month)
         now = datetime.now()
-        default_start = f"{now.year}-{now.month:02d}-01"
+        if now.month == 12:
+            next_month = 1
+            next_year = now.year + 1
+        else:
+            next_month = now.month + 1
+            next_year = now.year
+
+        # First day of next month
+        default_start = f"{next_year}-{next_month:02d}-01"
         
-        # Last day of current month
+        # Last day of next month (use next_month and next_year)
         import calendar
-        last_day = calendar.monthrange(now.year, now.month)[1]
-        default_end = f"{now.year}-{now.month:02d}-{last_day:02d}"
+        last_day = calendar.monthrange(next_year, next_month)[1]
+        default_end = f"{next_year}-{next_month:02d}-{last_day:02d}"
+
         
         # Next month code (commented out):
         # # Calculate next month
@@ -122,7 +131,6 @@ def index():
 def process_schedule(request_data):
     """Background function to process the scheduling request"""
     global job_status
-    
     try:
         with job_lock:
             job_status['progress'] = 'Processing files...'
@@ -153,6 +161,7 @@ def process_schedule(request_data):
             people_file = config.get('data_files.people_data_file')
             night_file = config.get('data_files.night_dates_file')
             festivity_file = config.get('data_files.festivity_dates_file')
+            print(f"Debug mode: Using default files {people_file}, {night_file}, {festivity_file}")
             
             # Load data files with fallback logic (like main.py)
             people_data = data_loader.load_people_data(people_file, log_level='error')
@@ -234,7 +243,7 @@ def process_schedule(request_data):
         # Build ONLY the settings overrides from the web form (let ConfigManager handle defaults)
         form_overrides = {
             # Staff requirements (all exposed in web form)
-            'min_morning_staff': int(form.get('min_morning_staff', 3)),
+            'min_morning_staff': int(form.get('min_morning_staff', 2)),
             'target_afternoon_staff': int(form.get('target_afternoon_staff', 1)),
             'night_staff': int(form.get('night_staff', 1)),
             'saturday_morning_staff': int(form.get('saturday_morning_staff', 0)),
@@ -247,15 +256,32 @@ def process_schedule(request_data):
             'max_weekend_days_per_month': int(form.get('max_weekend_days_per_month', 2)),
             'night_shifts_per_month': int(form.get('night_shifts_per_month', 1)),
             
+            # NEW: max_afternoon_shifts_per_week
+            'max_afternoon_shifts_per_week': int(form.get('max_afternoon_shifts_per_week', 1)),
+            
+            # NEW: prevent_consecutive_weekend_days
+            'prevent_consecutive_weekend_days': 'prevent_consecutive_weekend_days' in form,
+            
+            # NEW: strict_night_shift_balancing
+            'strict_night_shift_balancing': 'strict_night_shift_balancing' in form,
+            
             # Multi-run settings (all exposed in web form)
             'multi_run': {
                 'enabled': 'multi_run_enabled' in form,
-                'max_runs': int(form.get('max_runs', 100)),
+                'max_runs': int(form.get('max_runs', 1000)),
                 'silence_output': True,
                 'show_progress_bar': False,
+                'enforce_desiderata': 'enforce_desiderata' in form,
+                'prioritize_minimal_unassigned_shifts': 'prioritize_minimal_unassigned_shifts' in form,
                 'person_scoring': {
-                    'enabled': 'person_scoring_enabled' in form
-                }
+                    'enabled': 'person_scoring_enabled' in form,
+                    'night_score_coeff': float(form.get('night_score_coeff', 2.0)),
+                    'weekend_score_coeff': float(form.get('weekend_score_coeff', 2.0)),
+                    'afternoon_score_coeff': float(form.get('afternoon_score_coeff', 1.0)),
+                },
+                'only_consider_best_passes': 'only_consider_best_passes' in form,
+                'target_best_pass_runs': int(form.get('target_best_pass_runs', 100)),
+                'accumulate_best_pass_runs': 'accumulate_best_pass_runs' in form,
             },
             
             # Afternoon balancing (all exposed in web form)
@@ -266,7 +292,9 @@ def process_schedule(request_data):
                 'enforce_strict_weekly_balance': 'enforce_strict_weekly_balance' in form,
                 'consider_weekends_afternoons': 'consider_weekends_afternoons' in form,
                 'give_precedence_to_afternoon_over_morning': 'give_precedence_to_afternoon_over_morning' in form,
-                'prefer_not_in_internship': 'prefer_not_in_internship' in form
+                'prefer_not_in_internship': 'prefer_not_in_internship' in form,
+                'max_consecutive_afternoons': int(form.get('max_consecutive_afternoons', 1)),
+                'allow_consecutive_afternoons': 'allow_consecutive_afternoons' in form,
             },
             
             # Web-specific logging overrides (reduce noise in web interface)
@@ -291,7 +319,6 @@ def process_schedule(request_data):
         with job_lock:
             job_status['progress'] = 'Creating scheduler...'
         
-        print(form_overrides)
         # Create scheduler with PRE-LOADED data and let it use ConfigManager defaults + form overrides
         scheduler = HospitalScheduler(
             people_data=people_data,
@@ -370,12 +397,8 @@ def process_schedule(request_data):
         total_people = len(staff_statistics)
         staff_totals['avg_hours_per_week'] = sum(person['avg_hours_per_week'] for person in staff_statistics) / total_people if total_people > 0 else 0
         
-        # Verify constraints to get summary (only if not already in multi-run)
-        if not scheduler.settings['multi_run']['enabled']:
-            constraint_results = scheduler.verify_constraints(start_date, end_date)
-        else:
-            # For multi-run, use the last constraint results if available
-            constraint_results = getattr(scheduler, 'last_constraint_results', {})
+        # Verify constraints to get summary
+        constraint_results = scheduler.verify_constraints(start_date, end_date)
         
         passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
         total_constraints = len(constraint_results)

@@ -1028,7 +1028,10 @@ def main(settings_overrides=None):
                 'night_score_coeff': 2.0,      # Weight for night shifts
                 'weekend_score_coeff': 2.0,    # Weight for weekend shifts
                 'afternoon_score_coeff': 1.0   # Weight for afternoon shifts
-            }
+            },
+            'only_consider_best_passes': True,  # NEW
+            'target_best_pass_runs': 100,       # NEW
+            'accumulate_best_pass_runs': False  # NEW
         },
         
         'afternoon_balancing': {
@@ -1039,6 +1042,7 @@ def main(settings_overrides=None):
             'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
             'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
             'prefer_not_in_internship': True,  # Prefer people not in internship for afternoon shifts
+            'max_consecutive_afternoons': 1,  # Max consecutive afternoons per person
             'allow_consecutive_afternoons': False  # Allow consecutive afternoon shifts
         },
         
