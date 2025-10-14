@@ -617,6 +617,30 @@ class ShiftAssigner:
                 eligibility_debug[person_id] = reasons
                 continue
                 
+            # Consecutive afternoons logic
+            if (
+                shift == 'afternoon'
+                and not self.scheduler.settings['afternoon_balancing'].get('allow_consecutive_afternoons', True)
+            ):
+                prev_date = date - timedelta(days=1)
+                next_date = date + timedelta(days=1)
+                prev_conflict = False
+                next_conflict = False
+                # Check previous day
+                if prev_date in self.scheduler.schedule[person_id]:
+                    prev_shifts = self.scheduler.schedule[person_id][prev_date]
+                    if 'afternoon' in prev_shifts or 'mp' in prev_shifts:
+                        prev_conflict = True
+                # Check next day
+                if next_date in self.scheduler.schedule[person_id]:
+                    next_shifts = self.scheduler.schedule[person_id][next_date]
+                    if 'afternoon' in next_shifts or 'mp' in next_shifts:
+                        next_conflict = True
+                if prev_conflict or next_conflict:
+                    reasons.append("would create consecutive afternoon shifts (not allowed)")
+                    eligibility_debug[person_id] = reasons
+                    continue
+            
             # Check basic shift assignment constraints
             can_assign, constraint_reason = self._check_can_assign_shift_detailed(person_id, date, shift)
             if not can_assign:

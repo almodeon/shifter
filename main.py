@@ -1028,7 +1028,8 @@ def main(settings_overrides=None):
             'enforce_strict_weekly_balance': True,    # Only consider people with lowest weekly afternoon count
             'consider_weekends_afternoons': False,     # Count weekend MP shifts as afternoon shifts for balancing
             'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
-            'prefer_not_in_internship': True  # Prefer people not in internship for afternoon shifts
+            'prefer_not_in_internship': True,  # Prefer people not in internship for afternoon shifts
+            'allow_consecutive_afternoons': False  # Allow consecutive afternoon shifts
         },
         
         # Logging/Output verbosity settings (silence, error, info, debug)
@@ -1231,7 +1232,7 @@ if __name__ == "__main__":
             'enabled': True,
             'max_runs': 10000,
             'only_consider_best_passes': True,
-            'target_best_pass_runs': 100,
+            'target_best_pass_runs': 1000,
             'accumulate_best_pass_runs': True
         },
         'logging': {
