@@ -403,13 +403,14 @@ class HospitalScheduler:
         
         # Filter runs to only those with the highest number of passes if setting is enabled
         if only_consider_best_passes and all_runs:
-            all_runs = [run for run in all_runs if run['passed_count'] == max_passed_count]
-            self.logger.log('multi_run_optimization', 'info', f"Filtered to {len(all_runs)} runs with best passes ({max_passed_count}/{total_constraints})")
+            all_runs_best = [run for run in all_runs if run['passed_count'] == max_passed_count]
+            self.logger.log('multi_run_optimization', 'info', f"Filtered to {len(all_runs_best)} runs with best passes ({max_passed_count}/{total_constraints})")
+        else:
+            all_runs_best = all_runs
 
         # Sort runs based on priority setting with discrimination score as final tiebreaker
         if prioritize_minimal_unassigned:
-            # Sort by: unassigned (asc), passed (desc), warnings (asc), hour_diff (asc), discrimination_score (asc)
-            sorted_runs = sorted(all_runs, key=lambda x: (
+            sorted_runs = sorted(all_runs_best, key=lambda x: (
                 x['unassigned_count'], 
                 -x['passed_count'], 
                 x['warning_count'], 
@@ -418,8 +419,7 @@ class HospitalScheduler:
             ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_unassigned_count} unassigned, {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
         else:
-            # Sort by: passed (desc), warnings (asc), unassigned (asc), hour_diff (asc), discrimination_score (asc)
-            sorted_runs = sorted(all_runs, key=lambda x: (
+            sorted_runs = sorted(all_runs_best, key=lambda x: (
                 -x['passed_count'], 
                 x['warning_count'], 
                 x['unassigned_count'],
@@ -427,25 +427,33 @@ class HospitalScheduler:
                 x.get('discrimination_score', float('inf'))
             ))
             self.logger.log('multi_run_optimization', 'info', f"Best result: {best_passed_count}/{len(best_constraint_results) if best_constraint_results else 0} constraints passed")
-        
+
         # Short console display - show unassigned shifts if prioritized
         if self._should_log('multi_run_optimization', 'info'):
             if prioritize_minimal_unassigned:
                 print(f"{'Rank':<4} {'Run':<4} {'Unassigned':<10} {'Passed':<8} {'Warnings':<8} {'Hr_Diff':<8}")
                 print("-" * 46)
-                
                 for rank, run in enumerate(sorted_runs, 1):
                     print(f"{rank:<4} {run['run_id']+1:<4} {run['unassigned_count']:<10} {run['passed_count']:<8} {run['warning_count']:<8} {run['hour_difference']:<8}")
             else:
-                # UPDATED: Show unassigned shifts even when not prioritized
                 print(f"{'Rank':<4} {'Run':<4} {'Passed':<8} {'Warnings':<8} {'Unassigned':<10} {'Hr_Diff':<8}")
                 print("-" * 50)
-                
                 for rank, run in enumerate(sorted_runs, 1):
                     print(f"{rank:<4} {run['run_id']+1:<4} {run['passed_count']:<8} {run['warning_count']:<8} {run['unassigned_count']:<10} {run['hour_difference']:<8}")
 
-        # Export detailed ranking to CSV
-        self._export_multi_run_ranking(sorted_runs)
+        # Export detailed ranking to CSV (ALL RUNS, not just best passes)
+        self._export_multi_run_ranking(
+            sorted(
+                all_runs,  # <--- always export all runs
+                key=lambda x: (
+                    x['unassigned_count'] if prioritize_minimal_unassigned else -x['passed_count'],
+                    -x['passed_count'] if prioritize_minimal_unassigned else x['warning_count'],
+                    x['warning_count'],
+                    x['hour_difference'],
+                    x.get('discrimination_score', float('inf'))
+                )
+            )
+        )
         
         # Restore the best run's state to the scheduler
         if best_schedule:
@@ -1182,12 +1190,11 @@ def main(settings_overrides=None):
     # Generate schedule
     scheduler._log('data_loading', 'info', "Generating hospital schedule...")
     schedule = scheduler.generate_schedule(start_date, end_date)
-    
-    # Verify all constraints (only if not already in multi-run)
+
+    # Always verify constraints on the final schedule (even after multi_run)
     print("\n🔍 Verifying constraints...")
-    if not scheduler.settings['multi_run']['enabled']:
-        constraint_results = scheduler.verify_constraints(start_date, end_date)
-    
+    constraint_results = scheduler.verify_constraints(start_date, end_date)
+
     # Print to console
     scheduler.print_schedule()
     
@@ -1236,9 +1243,9 @@ if __name__ == "__main__":
         },
         'multi_run': {
             'enabled': True,
-            'max_runs': 10000,
+            'max_runs': 1000,
             'only_consider_best_passes': True,
-            'target_best_pass_runs': 1000,
+            'target_best_pass_runs': 100,
             'accumulate_best_pass_runs': True
         },
         'logging': {

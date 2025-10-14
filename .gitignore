@@ -209,3 +209,4 @@ __marimo__/
 # Output directory
 output/
 history/
+history/**
