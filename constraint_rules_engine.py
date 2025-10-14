@@ -171,9 +171,41 @@ class WorkHoursConstraint(BaseConstraint):
                         violations.append(f"Person {person_id} week {week_start}: {week_hours:.1f}h < {self.min_hours}h minimum")
                     if self.max_hours and week_hours > self.max_hours:
                         violations.append(f"Person {person_id} week {week_start}: {week_hours:.1f}h > {self.max_hours}h maximum")
+        elif self.constraint_type == 'monthly':
+            # Group dates by month
+            months = {}
+            for date in all_dates:
+                month_key = (date.year, date.month)
+                if month_key not in months:
+                    months[month_key] = []
+                months[month_key].append(date)
+            for person_id in scheduler.people.keys():
+                for month_key, month_dates in months.items():
+                    # Find all weeks (Monday start) in this month
+                    first_day = min(month_dates)
+                    last_day = max(month_dates)
+                    week_starts = []
+                    current = first_day - timedelta(days=first_day.weekday())
+                    while current <= last_day:
+                        week_starts.append(current)
+                        current += timedelta(weeks=1)
+                    week_hours_list = []
+                    for week_start in week_starts:
+                        week_hours = scheduler.shift_assigner.calculate_weekly_hours(person_id, week_start, force_debug=False)
+                        week_hours_list.append(week_hours)
+                    if week_hours_list:
+                        num_days_in_month = (last_day - first_day).days + 1
+                        avg_weekly_hours = sum(week_hours_list) / (num_days_in_month / 7)
+                        if self.min_hours and avg_weekly_hours < self.min_hours:
+                            violations.append(f"Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week < {self.min_hours}h minimum")
+                        if self.max_hours and avg_weekly_hours > self.max_hours:
+                            violations.append(f"Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week > {self.max_hours}h maximum")
         
         passed = len(violations) == 0
-        message = f"Weekly hours check: {len(violations)} violations found" if violations else "All weekly hours within limits"
+        if self.constraint_type == 'monthly':
+            message = f"Monthly average weekly hours check: {len(violations)} violations found" if violations else "All monthly average weekly hours within limits"
+        else:
+            message = f"Weekly hours check: {len(violations)} violations found" if violations else "All weekly hours within limits"
         
         return ConstraintResult(self.constraint_id, passed, self.severity, message, violations, name=self.name)
     
@@ -312,7 +344,7 @@ class ConstraintRulesEngine:
         
         # Work hours constraints
         self.add_constraint(WorkHoursConstraint(
-            'weekly_hours', 'weekly', 
+            'weekly_hours', 'monthly', 
             settings['min_weekly_hours'], settings['max_weekly_hours'],
             severity=ConstraintSeverity.HIGH
         ))

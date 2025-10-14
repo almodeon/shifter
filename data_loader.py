@@ -227,8 +227,11 @@ class DataLoader:
             
             # Parse vacation dates (Ferie) and convert to forbidden shifts
             ferie_col = 'Ferie'
+            vacation_dates = []
             if ferie_col in row and row[ferie_col] and str(row[ferie_col]).strip():
                 vacation_shifts = self._parse_vacation_dates(str(row[ferie_col]), log_level)
+                # Extract only the 'date' values, avoiding duplicates
+                vacation_dates = list({shift['date'] for shift in vacation_shifts if 'date' in shift})
                 forbidden_shifts.extend(vacation_shifts)
                 if log_level in ['info', 'debug']:
                     self._log('info', f"Person {person_id}: Added {len(vacation_shifts)} vacation-based forbidden shifts")
@@ -269,13 +272,15 @@ class DataLoader:
                         if parsed_date:
                             forbidden_weekends.append(parsed_date)
             
+            # Compile person data
             person_data = {
                 'forbidden_shifts': forbidden_shifts,
                 'forbidden_weekends': forbidden_weekends,
                 'night_available': night_available,
                 'night_priority': night_priority,
                 'weekend_priority': weekend_priority,
-                'tirocinio_dates': tirocinio_dates  # Changed from string to list of dates
+                'tirocinio_dates': tirocinio_dates,
+                'vacation_dates': vacation_dates,
             }
             
             if log_level in ['info', 'debug']:

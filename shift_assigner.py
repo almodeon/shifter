@@ -1105,7 +1105,7 @@ class ShiftAssigner:
         
         return True, "OK"
     
-    def calculate_weekly_hours(self, person_id, week_start):
+    def calculate_weekly_hours(self, person_id, week_start, force_debug=False):
         """Calculate hours worked in a week starting from week_start"""
         hours = 0
         person = self.scheduler.people[person_id]
@@ -1121,6 +1121,25 @@ class ShiftAssigner:
             # Check assigned shifts for this date
             assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
             
+            # Add hours for vacation days (each vacation day counts as a morning shift),
+            # but only if it's a weekday and not a festivity/holiday
+            if (
+                'vacation_dates' in person and
+                date in person['vacation_dates'] and
+                date.weekday() < 5 and
+                date not in self.scheduler.festivity_dates
+            ):
+                hours += self.scheduler.settings['morning_shift_hours']
+                self.logger.log('fill_up_minimum_hours', 'debug', 
+                              f"Person {person_id} on {date}: +{self.scheduler.settings['morning_shift_hours']}h vacation day")
+            if force_debug:
+                import pprint
+                print(f"Person {person_id} on {date}: assigned shifts = {assigned_shifts}, vacation = {date in person.get('vacation_dates', [])}, festivity = {date in self.scheduler.festivity_dates}, vacation days: {person.get('vacation_dates', [])}")
+                print(f"DEBUG: person_id={person_id}, vacation_dates={person.get('vacation_dates', [])}, types={[type(d) for d in person.get('vacation_dates', [])]}")
+                print(f"DEBUG FULL PERSON STRUCTURE for {person_id}:")
+                for k, v in person.items():
+                    print(f"{k}:\n{pprint.pformat(v)}\n")
+
             # Add hours for tirocinio morning shift (if applicable)
             if is_tirocinio_day:
                 # Person gets tirocinio morning hours UNLESS they have afternoon shift

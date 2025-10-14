@@ -1228,7 +1228,7 @@ if __name__ == "__main__":
             'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
         },
         'multi_run': {
-            'enabled': False,
+            'enabled': True,
             'max_runs': 10000,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 100,
