@@ -984,7 +984,7 @@ def main(settings_overrides=None):
         'night_shifts_only_weekdays': False,
         'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
         'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
-        'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
+        'strict_night_shift_balancing': False,  # Enforce strict night shift distribution
         
         # Data file names (with extensions)
         'data_files': {
@@ -1241,6 +1241,7 @@ if __name__ == "__main__":
             # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
             # 'festivity_dates_file': 'festivi_empty.csv',     # Festivity dates file with extension
         },
+        'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
             'enabled': True,
             'max_runs': 1000,
@@ -1252,12 +1253,12 @@ if __name__ == "__main__":
             'data_loading': 'error',              
             'settings_display': 'error',
             'multi_run_optimization': 'error',
-            'night_shift_assignment': 'error',
+            'night_shift_assignment': 'debug',
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
             'fill_up_minimum_hours': 'error',
-            'shift_assignment_warnings': 'error',
-            'shift_assignment_debug': 'error',
+            'shift_assignment_warnings': 'debug',
+            'shift_assignment_debug': 'debug',
             'afternoon_balancing': 'error',
             'constraint_verification': 'info',
             'schedule_display': 'error',

@@ -602,18 +602,18 @@ class ShiftAssigner:
                 eligibility_debug[person_id] = reasons
                 continue
             
-            # NEW: Skip if person is excluded due to maximum weekend shifts
+            # Skip if person is excluded due to maximum weekend shifts
             if person_id in excluded_people:
                 reasons.append(f"excluded due to maximum weekend shifts ({max_allowed})")
                 eligibility_debug[person_id] = reasons
                 continue
             
-            # NEW: Special handling for tirocinio days - prioritize afternoon shifts
+            # Special handling for tirocinio days - prioritize afternoon shifts
             person = self.scheduler.people[person_id]
             is_tirocinio_day = 'tirocinio_dates' in person and date in person['tirocinio_dates']
-            
-            if is_tirocinio_day and shift != 'afternoon':
-                reasons.append(f"tirocinio day (only afternoon shifts allowed on {date})")
+
+            if is_tirocinio_day and shift != 'afternoon' and shift != 'night':
+                reasons.append(f"tirocinio day (only afternoon and night shifts allowed on {date})")
                 eligibility_debug[person_id] = reasons
                 continue
                 
@@ -932,10 +932,10 @@ class ShiftAssigner:
         """Detailed check if person can be assigned shift (returns boolean, reasons list)"""
         person = self.scheduler.people[person_id]
         
-        # Check tirocinio (training) restrictions
+        # --- Fix: Allow night shifts on tirocinio days ---
         if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
-            if shift != 'afternoon':
-                return False, f"tirocinio day (only afternoon shifts allowed on {date})"
+            if shift != 'afternoon' and shift != 'night':
+                return False, f"tirocinio day (only afternoon or night shifts allowed on {date})"
         
         # Check night shift availability
         if shift == 'night' and not person['night_available']:
