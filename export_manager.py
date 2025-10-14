@@ -1061,7 +1061,7 @@ class ExportManager:
     def save_all_data(self, output_folder):
         """Save all input files, settings, output files, and logs to a specified folder."""
         # Get the current date in YYYY-MM-DD format
-        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_date = datetime.now().strftime('%Y-%m-%d-%H%M%S')
         date_folder = os.path.join(output_folder, current_date)  # Create a subfolder with the date
 
         os.makedirs(date_folder, exist_ok=True)

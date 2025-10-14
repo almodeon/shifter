@@ -1,5 +1,0 @@
-[INFO] [export_notifications] Detailed ranking exported to: output\multi_run_ranking.csv
-[INFO] [summary_statistics] Workload balancing: DISABLED
-[INFO] [export_notifications] Schedule exported to output\schedule_output.csv
-[INFO] [export_notifications] Schedule exported to JSON: output\schedule_output.json
-[INFO] [export_notifications] No assignment failures to export

@@ -688,10 +688,10 @@ class ShiftAssigner:
         # Log detailed eligibility debug information if no one is eligible
         if not eligible_people:
             self.logger.log('shift_assignment_warnings', 'error', f"No eligible people for {shift} shift on {date.strftime('%d/%m/%Y')}")
-            self.logger.log('shift_assignment_warnings', 'error', "Eligibility breakdown:")
+            self.logger.log('shift_assignment_warnings', 'debug', "Eligibility breakdown:")
             for person_id in people_list:
                 reasons = eligibility_debug.get(person_id, ["unknown"])
-                self.logger.log('shift_assignment_warnings', 'error', f"  Person {person_id}: {'; '.join(reasons)}")
+                self.logger.log('shift_assignment_warnings', 'debug', f"  Person {person_id}: {'; '.join(reasons)}")
             return None
         
         # NEW: Apply strict weekly balance enforcement for afternoon shifts
@@ -932,16 +932,31 @@ class ShiftAssigner:
         """Detailed check if person can be assigned shift (returns boolean, reasons list)"""
         person = self.scheduler.people[person_id]
         
-        # NEW: Check tirocinio (training) restrictions
+        # Check tirocinio (training) restrictions
         if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
             if shift != 'afternoon':
                 return False, f"tirocinio day (only afternoon shifts allowed on {date})"
         
-        # NEW: Check night shift availability
+        # Check night shift availability
         if shift == 'night' and not person['night_available']:
             return False, "not available for night shifts"
         
-        # NEW: Check consecutive afternoon shift limit
+        if shift == 'night' and self.scheduler.settings.get('strict_night_shift_balancing', False):
+            # Get current night shift counts for all people
+            night_counts = [
+                self.scheduler.shift_counts[pid]['night']
+                for pid in self.scheduler.people.keys()
+            ]
+            max_nights = max(night_counts)
+            min_nights = min(night_counts)
+            my_nights = self.scheduler.shift_counts[person_id]['night']
+            # If not all have equal, only those with less than max are eligible
+            if max_nights != min_nights:
+                if my_nights >= max_nights:
+                    return False, f"strict night balancing: already has max nights ({my_nights} >= {max_nights})"
+            # else: all have equal, allow all to be eligible
+        
+        # Check consecutive afternoon shift limit
         if shift == 'afternoon' and self.scheduler.settings['afternoon_balancing']['enabled']:
             max_consecutive = self.scheduler.settings['afternoon_balancing']['max_consecutive_afternoons']
             if max_consecutive > 0:
@@ -963,7 +978,7 @@ class ShiftAssigner:
                 if consecutive_afternoons >= max_consecutive:
                     return False, f"would exceed max consecutive afternoons ({consecutive_afternoons} >= {max_consecutive})"
             
-            # NEW: Check weekly afternoon shift limit
+            # Check weekly afternoon shift limit
             max_weekly = self.scheduler.settings['afternoon_balancing'].get('max_afternoons_per_week', 0)
             if max_weekly > 0:
                 # Count afternoon shifts in the current week

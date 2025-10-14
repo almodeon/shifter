@@ -295,6 +295,50 @@ class FestivityConstraint(BaseConstraint):
         return ConstraintResult(self.constraint_id, passed, self.severity, message, violations, name=self.name)
 
 
+class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
+    """
+    Each person must be assigned at least one shift on every weekday (Mon-Fri) that is not a festivity,
+    unless they are in tirocinio, on vacation, or resting after a night shift.
+    """
+    def __init__(self, constraint_id: str = "always_on_shift_weekdays",
+                 severity: ConstraintSeverity = ConstraintSeverity.HIGH):
+        super().__init__(
+            constraint_id,
+            "Always On Shift (Weekdays)",
+            "Each person must be assigned at least one shift on every weekday (not festivity), unless in tirocinio, on vacation, or resting after night shift.",
+            severity
+        )
+
+    def evaluate(self, scheduler, start_date: date, end_date: date) -> ConstraintResult:
+        violations = []
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        festivity_dates = set(scheduler.festivity_dates)
+        for person_id, person in scheduler.people.items():
+            for d in all_dates:
+                if d.weekday() >= 5 or d in festivity_dates:
+                    continue  # Skip weekends and festivities
+
+                assigned_shifts = scheduler.schedule[person_id].get(d, [])
+                # Vacation: all shifts forbidden
+                is_vacation = any(
+                    forbidden and forbidden['date'] == d and len(forbidden['shifts']) == 3
+                    for forbidden in person.get('forbidden_shifts', [])
+                )
+                # Tirocinio
+                is_tirocinio = 'tirocinio_dates' in person and d in person['tirocinio_dates']
+                # Rest after night shift (the day after a night shift)
+                prev_day = d - timedelta(days=1)
+                had_night_before = 'night' in scheduler.schedule[person_id].get(prev_day, [])
+
+                if not assigned_shifts and not is_vacation and not is_tirocinio and not had_night_before:
+                    violations.append(
+                        f"Person {person_id} has no shift on {d} (weekday, not festivity, not vacation/tirocinio/night-rest)"
+                    )
+
+        passed = len(violations) == 0
+        message = f"Weekday presence check: {len(violations)} violations found" if violations else "All people assigned on all required weekdays"
+        return ConstraintResult(self.constraint_id, passed, self.severity, message, violations, name=self.name)
+
 class ConstraintRulesEngine:
     """Main engine for managing and evaluating constraints"""
     
@@ -370,6 +414,9 @@ class ConstraintRulesEngine:
             'festivity_coverage', settings.get('festivity_staff', 1),
             severity=ConstraintSeverity.HIGH
         ))
+        
+        # Always On Shift Weekdays constraint
+        self.add_constraint(AlwaysOnShiftWeekdaysConstraint())
 
     def add_constraint(self, constraint: BaseConstraint):
         """Add a constraint to the engine"""

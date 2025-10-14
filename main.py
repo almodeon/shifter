@@ -966,6 +966,7 @@ def main(settings_overrides=None):
         # Monthly and daily limits
         'max_weekend_days_per_month': 2,
         'night_shifts_per_month': 1,
+        'max_afternoon_shifts_per_week': 1,
         'max_consecutive_days': 6,
         'min_rest_hours_between_shifts': 11,
         'min_continuous_rest_hours': 24,
@@ -975,6 +976,7 @@ def main(settings_overrides=None):
         'night_shifts_only_weekdays': False,
         'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
         'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
+        'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         
         # Data file names (with extensions)
         'data_files': {
@@ -1041,10 +1043,10 @@ def main(settings_overrides=None):
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
             'fill_up_minimum_hours': 'error',
-            'shift_assignment_warnings': 'debug',
-            'shift_assignment_debug': 'debug',
+            'shift_assignment_warnings': 'error',
+            'shift_assignment_debug': 'error',
             'afternoon_balancing': 'error',
-            'constraint_verification': 'error',
+            'constraint_verification': 'info',
             'schedule_display': 'error',
             'summary_statistics': 'info',
             'export_notifications': 'info'
@@ -1182,6 +1184,7 @@ def main(settings_overrides=None):
     schedule = scheduler.generate_schedule(start_date, end_date)
     
     # Verify all constraints (only if not already in multi-run)
+    print("\n🔍 Verifying constraints...")
     if not scheduler.settings['multi_run']['enabled']:
         constraint_results = scheduler.verify_constraints(start_date, end_date)
     
@@ -1227,6 +1230,9 @@ if __name__ == "__main__":
             'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
             'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
             'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
+            # 'people_data_file': 'desiderata_empty.csv',     # People/constraints data file with extension
+            # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
+            # 'festivity_dates_file': 'festivi_empty.csv',     # Festivity dates file with extension
         },
         'multi_run': {
             'enabled': True,
@@ -1242,14 +1248,14 @@ if __name__ == "__main__":
             'night_shift_assignment': 'error',
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
-            'fill_up_minimum_hours': 'debug',
-            'shift_assignment_warnings': 'debug',
-            'shift_assignment_debug': 'debug',
+            'fill_up_minimum_hours': 'error',
+            'shift_assignment_warnings': 'error',
+            'shift_assignment_debug': 'error',
             'afternoon_balancing': 'error',
             'constraint_verification': 'error',
             'schedule_display': 'error',
-            'summary_statistics': 'debug',
-            'export_notifications': 'info'
+            'summary_statistics': 'error',
+            'export_notifications': 'error'
         },
         # 'min_morning_staff': 3
     }

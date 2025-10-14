@@ -37,6 +37,7 @@ class ConfigManager:
             # Monthly and daily limits
             'max_weekend_days_per_month': 2,
             'night_shifts_per_month': 0,
+            'max_afternoon_shifts_per_week': 1,
             'max_consecutive_days': 6,
             'min_rest_hours_between_shifts': 11,
             'min_continuous_rest_hours': 24,
@@ -46,7 +47,8 @@ class ConfigManager:
             'night_shifts_only_weekdays': False,
             'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
             'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
-            
+            'strict_night_shift_balancing': True,  # Enforce strict night shift distribution (always get the person with the least nights so far)
+
             # Data file names (with extensions)
             'data_files': {
                 'people_data_file': 'desiderata_default.csv',     # People/constraints data file with extension
