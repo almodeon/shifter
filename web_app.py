@@ -294,7 +294,7 @@ def process_schedule(request_data):
                 'constraint_verification': 'error',
                 'schedule_display': 'error',
                 'summary_statistics': 'error',
-                'export_notifications': 'error'
+                'export_notifications': 'info',
             }
         }
         
@@ -321,7 +321,6 @@ def process_schedule(request_data):
         schedule = scheduler.generate_schedule(start_date, end_date, progress_callback=progress_callback)
 
         # Always verify constraints on the final schedule (even after multi_run)
-        print("\n🔍 Verifying constraints... (WEBAPP)")
         constraint_results = scheduler.verify_constraints(start_date, end_date)
 
         with job_lock:
@@ -428,6 +427,8 @@ def process_schedule(request_data):
         
         # Sort constraints: failed first, then passed
         constraint_details.sort(key=lambda x: (x['status'] == 'PASS', x['name']))
+
+        print(scheduler.export_manager.output_files)
         
         # Create results
         if failed_count == 0:

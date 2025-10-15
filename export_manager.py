@@ -10,6 +10,7 @@ class ExportManager:
         """Initialize with reference to main scheduler for accessing settings, people, schedule, etc."""
         self.scheduler = scheduler
         self.logger = scheduler.logger
+        self.output_files = {}  # NEW: Track output files by type
     
     def export_schedule_to_csv(self, output_file, start_date=None, end_date=None):
         """Export schedule to CSV file (transposed format) with warnings column"""
@@ -200,10 +201,13 @@ class ExportManager:
                             writer.writerow(stats_row)
         
         self.logger.log('export_notifications', 'info', f"Schedule exported to {output_file}")
+        self.output_files['csv'] = output_file  # Save for later collection
 
         # Export JSON with the same base filename
         json_output_file = os.path.splitext(output_file)[0] + '.json'
         self.export_schedule_json(json_output_file)
+        self.logger.log('export_notifications', 'info', f"Schedule exported to {json_output_file}")
+        self.output_files['json'] = json_output_file  # Save for later collection
     
     def _get_staff_statistics_data(self, start_date, end_date):
         """Get staff statistics data for appending to schedule CSV, with detailed breakdowns."""
@@ -471,6 +475,7 @@ class ExportManager:
             writer.writerows(staff_data)
         
         self.logger.log('export_notifications', 'info', f"Staff statistics exported to {output_file}")
+        self.output_files['staff_statistics'] = output_file  # Save for later collection
         return staff_data
     
     def export_multi_run_ranking(self, sorted_runs):
@@ -706,6 +711,7 @@ class ExportManager:
                     writer.writerow(['', warning])
         
         self.logger.log('export_notifications', 'info', f"Constraint summary exported to {output_file}")
+        self.output_files['constraint_summary'] = output_file  # Save for later collection
     
     def export_schedule_json(self, output_file='schedule_output.json'):
         """Export schedule to JSON format"""
@@ -825,6 +831,7 @@ class ExportManager:
             json.dump(export_data, file, indent=2, ensure_ascii=False)
 
         self.logger.log('export_notifications', 'info', f"Schedule exported to JSON: {output_file}")
+        self.output_files['json'] = output_file  # Save for later collection
     
     def export_all(self, start_date, end_date, base_filename='schedule'):
         """Export schedule in all available formats"""
@@ -851,8 +858,17 @@ class ExportManager:
         self.export_assignment_debug(debug_file)
         
         self.logger.log('export_notifications', 'info', "All exports completed successfully!")
-        self.logger.log('export_notifications', 'info', "All exports completed successfully!")
-    
+        
+        # # Collect all output files in a summary dict
+        # self.output_files['all'] = {
+        #     'csv': self.output_files.get('csv'),
+        #     'json': self.output_files.get('json'),
+        #     'staff_statistics': self.output_files.get('staff_statistics'),
+        #     'multi_run_ranking': self.output_files.get('multi_run_ranking'),
+        #     'constraint_summary': self.output_files.get('constraint_summary'),
+        #     'debug': os.path.join(self.scheduler.output_dir, debug_file)
+        # }
+
     def export_assignment_debug(self, output_file='assignment_debug.csv'):
         """Export detailed shift assignment failure information"""
         output_path = os.path.join(self.scheduler.output_dir, output_file)
@@ -908,10 +924,41 @@ class ExportManager:
             
             self.scheduler.logger.log('export_notifications', 'info', 
                                     f"📊 Assignment debug exported to {output_file} ({len(self.scheduler.assignment_failures)} failures)")
-        
+            self.output_files['debug'] = output_path  # Save for later collection
         except Exception as e:
             self.scheduler.logger.log('export_notifications', 'error', 
                                     f"❌ Failed to export assignment debug: {e}")
+            self.output_files['debug'] = None
+
+    def export_schedule_docx(self, docx_file=None, json_file=None):
+        """
+        Export the schedule to a DOCX file using ScheduleDocxCreator.
+        Saves the DOCX filename in self.output_files['docx'].
+        """
+        from doc_creator import ScheduleDocxCreator
+
+        # Determine file paths
+        output_dir = self.scheduler.output_dir
+        docx_file = docx_file or os.path.join(output_dir, "schedule_output.docx")
+        json_file = json_file or os.path.join(output_dir, "schedule_output.json")
+
+        # Ensure JSON exists (export if not)
+        if not os.path.exists(json_file):
+            self.export_schedule_json(json_file)
+
+        # Create DOCX
+        try:
+            creator = ScheduleDocxCreator(
+                json_path=json_file,
+                doc_path=docx_file
+                # Optionally add more settings here if needed
+            )
+            creator.create_doc()
+            self.logger.log('export_notifications', 'info', f"DOCX exported to {docx_file}")
+            self.output_files['docx'] = docx_file  # Save for later collection
+        except Exception as e:
+            self.logger.log('export_notifications', 'error', f"❌ DOCX export failed: {e}")
+            self.output_files['docx'] = None
 
     def _is_person_on_vacation(self, person_id: str, date) -> bool:
         """Check if a person is on vacation on a specific date"""
@@ -1072,7 +1119,6 @@ class ExportManager:
             self.scheduler.settings['data_files']['night_dates_file'],
             self.scheduler.settings['data_files']['holiday_dates_file']
         ]
-        
         for file in input_files:
             if os.path.exists(file):
                 shutil.copy(file, date_folder)  # Save to the date subfolder
@@ -1082,18 +1128,23 @@ class ExportManager:
         with open(settings_file, 'w') as f:
             json.dump(self.scheduler.settings, f, indent=2)
 
-        # Save output files
-        output_files = [
-            'schedule_output.csv',
-            'staff_statistics.csv',
-            'multi_run_ranking.csv',
-            'constraint_summary.csv'
-        ]
-        
-        for file in output_files:
-            full_path = os.path.join(self.scheduler.output_dir, file)
-            if os.path.exists(full_path):
-                shutil.copy(full_path, date_folder)  # Save to the date subfolder
+        # Save output files using self.output_files
+        for key, file_path in self.output_files.items():
+            if not file_path:
+                continue
+            # If it's a dict (e.g. self.output_files['all']), iterate its values
+            if isinstance(file_path, dict):
+                for subkey, subfile in file_path.items():
+                    if subfile and os.path.exists(subfile):
+                        shutil.copy(subfile, date_folder)
+            else:
+                if os.path.exists(file_path):
+                    shutil.copy(file_path, date_folder)
+
+        # Also save multi_run_ranking.csv if it exists in output dir (even if not in self.output_files)
+        multi_run_ranking_path = os.path.join(self.scheduler.output_dir, 'multi_run_ranking.csv')
+        if os.path.exists(multi_run_ranking_path):
+            shutil.copy(multi_run_ranking_path, date_folder)
 
         # Save logs
         log_file = os.path.join(date_folder, 'scheduler_log.txt')
