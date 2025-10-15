@@ -77,10 +77,10 @@ class DataLoader:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
             return []
     
-    def load_festivity_dates(self, file_path: str, log_level: str = 'info') -> List[datetime.date]:
-        """Load festivity dates from file (supports CSV, XLS, XLSX)"""
+    def load_holiday_dates(self, file_path: str, log_level: str = 'info') -> List[datetime.date]:
+        """Load holiday dates from file (supports CSV, XLS, XLSX)"""
         if not os.path.exists(file_path):
-            self._log('info', f"Festivity file not found: {file_path} - no festivity days will be scheduled")
+            self._log('info', f"Holiday file not found: {file_path} - no holiday days will be scheduled")
             return []
         
         file_ext = os.path.splitext(file_path)[1].lower()
@@ -401,8 +401,8 @@ class DataLoader:
             return []
     
     def _load_festivities_from_csv(self, csv_file: str, log_level: str) -> List[datetime.date]:
-        """Load festivity dates from CSV file"""
-        festivity_dates = []
+        """Load holiday dates from CSV file"""
+        holiday_dates = []
         
         # Try different encodings
         encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
@@ -414,7 +414,7 @@ class DataLoader:
                     lines = content.strip().split('\n')
                     
                     if log_level in ['info', 'debug']:
-                        self._log('info', f"Reading festivity dates from {csv_file}...")
+                        self._log('info', f"Reading holiday dates from {csv_file}...")
                     
                     for line in lines:
                         date_str = line.strip()
@@ -422,9 +422,9 @@ class DataLoader:
                         if date_str and not ('festiv' in date_str.lower() or 'holiday' in date_str.lower()):
                             parsed_date = self._parse_date(date_str)
                             if parsed_date:
-                                festivity_dates.append(parsed_date)
+                                holiday_dates.append(parsed_date)
                                 if log_level in ['debug']:
-                                    self._log('debug', f"  Festivity date: {parsed_date}")
+                                    self._log('debug', f"  Holiday date: {parsed_date}")
                 
                 break  # Successfully read with this encoding
                 
@@ -433,17 +433,17 @@ class DataLoader:
                     self._log('error', f"Could not read {csv_file}: {e}")
                 continue
         
-        return festivity_dates
+        return holiday_dates
     
     def _load_festivities_from_excel(self, excel_file: str, log_level: str) -> List[datetime.date]:
-        """Load festivity dates from Excel file"""
+        """Load holiday dates from Excel file"""
         try:
             df = self.pd.read_excel(excel_file, engine='openpyxl' if excel_file.endswith('.xlsx') else None, header=None)
             
             if log_level in ['info', 'debug']:
-                self._log('info', f"Reading festivity dates from {excel_file}...")
+                self._log('info', f"Reading holiday dates from {excel_file}...")
             
-            festivity_dates = []
+            holiday_dates = []
             
             for _, row in df.iterrows():
                 for cell_value in row:
@@ -453,17 +453,17 @@ class DataLoader:
                         if cell_str and not ('festiv' in cell_str.lower() or 'holiday' in cell_str.lower()):
                             # Handle Excel date objects
                             if isinstance(cell_value, datetime):
-                                festivity_dates.append(cell_value.date())
+                                holiday_dates.append(cell_value.date())
                                 if log_level in ['debug']:
-                                    self._log('debug', f"  Festivity date: {cell_value.date()}")
+                                    self._log('debug', f"  Holiday date: {cell_value.date()}")
                             else:
                                 parsed_date = self._parse_date(cell_str)
                                 if parsed_date:
-                                    festivity_dates.append(parsed_date)
+                                    holiday_dates.append(parsed_date)
                                     if log_level in ['debug']:
-                                        self._log('debug', f"  Festivity date: {parsed_date}")
+                                        self._log('debug', f"  Holiday date: {parsed_date}")
             
-            return festivity_dates
+            return holiday_dates
             
         except Exception as e:
             self._log('error', f"Error reading Excel file {excel_file}: {e}")
@@ -592,7 +592,7 @@ class DataLoader:
             }
         return people_data
     
-    def validate_data(self, people_data: Dict, night_dates: List, festivity_dates: List = None) -> Tuple[bool, List[str]]:
+    def validate_data(self, people_data: Dict, night_dates: List, holiday_dates: List = None) -> Tuple[bool, List[str]]:
         """Validate loaded data and return (is_valid, errors)"""
         errors = []
         
@@ -618,14 +618,14 @@ class DataLoader:
                 if not isinstance(date_obj, date):
                     errors.append(f"Invalid date format at position {i}: {date_obj}")
         
-        # Validate festivity dates
-        if festivity_dates is not None:
-            if not isinstance(festivity_dates, list):
-                errors.append("Festivity dates must be a list")
+        # Validate holiday dates
+        if holiday_dates is not None:
+            if not isinstance(holiday_dates, list):
+                errors.append("Holiday dates must be a list")
             else:
-                for i, date_obj in enumerate(festivity_dates):
+                for i, date_obj in enumerate(holiday_dates):
                     if not isinstance(date_obj, date):
-                        errors.append(f"Invalid festivity date format at position {i}: {date_obj}")
+                        errors.append(f"Invalid holiday date format at position {i}: {date_obj}")
         
         return len(errors) == 0, errors
     

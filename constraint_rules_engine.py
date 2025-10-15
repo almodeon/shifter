@@ -265,13 +265,13 @@ class CustomConstraint(BaseConstraint):
             )
 
 
-class FestivityConstraint(BaseConstraint):
-    """Constraint for festivity day coverage"""
+class HolidayConstraint(BaseConstraint):
+    """Constraint for holiday day coverage"""
     
     def __init__(self, constraint_id: str, required_staff: int = 1, 
                  severity: ConstraintSeverity = ConstraintSeverity.HIGH):
-        super().__init__(constraint_id, "Festivity Coverage", 
-                        f"Festivity days must have {required_staff} staff member(s)", severity)
+        super().__init__(constraint_id, "Holiday Coverage", 
+                        f"Holiday days must have {required_staff} staff member(s)", severity)
         self.required_staff = required_staff
     
     def evaluate(self, scheduler, start_date: date, end_date: date) -> ConstraintResult:
@@ -279,25 +279,25 @@ class FestivityConstraint(BaseConstraint):
         all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
         
         for date in all_dates:
-            if date in scheduler.festivity_dates:
+            if date in scheduler.holiday_dates:
                 staff_count = 0
                 for person_id in scheduler.people.keys():
                     assigned_shifts = scheduler.schedule[person_id].get(date, [])
-                    if 'mp' in assigned_shifts:  # Festivity uses MP shift
+                    if 'mp' in assigned_shifts:  # Holiday uses MP shift
                         staff_count += 1
                 
                 if staff_count < self.required_staff:
-                    violations.append(f"Festivity {date}: {staff_count}/{self.required_staff} staff assigned")
+                    violations.append(f"Holiday {date}: {staff_count}/{self.required_staff} staff assigned")
         
         passed = len(violations) == 0
-        message = f"Festivity coverage: {len(violations)} violations found" if violations else "All festivities properly covered"
+        message = f"Holiday coverage: {len(violations)} violations found" if violations else "All festivities properly covered"
         
         return ConstraintResult(self.constraint_id, passed, self.severity, message, violations, name=self.name)
 
 
 class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
     """
-    Each person must be assigned at least one shift on every weekday (Mon-Fri) that is not a festivity,
+    Each person must be assigned at least one shift on every weekday (Mon-Fri) that is not a holiday,
     unless they are in tirocinio, on vacation, or resting after a night shift.
     """
     def __init__(self, constraint_id: str = "always_on_shift_weekdays",
@@ -305,17 +305,17 @@ class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
         super().__init__(
             constraint_id,
             "Always On Shift (Weekdays)",
-            "Each person must be assigned at least one shift on every weekday (not festivity), unless in tirocinio, on vacation, or resting after night shift.",
+            "Each person must be assigned at least one shift on every weekday (not holiday), unless in tirocinio, on vacation, or resting after night shift.",
             severity
         )
 
     def evaluate(self, scheduler, start_date: date, end_date: date) -> ConstraintResult:
         violations = []
         all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
-        festivity_dates = set(scheduler.festivity_dates)
+        holiday_dates = set(scheduler.holiday_dates)
         for person_id, person in scheduler.people.items():
             for d in all_dates:
-                if d.weekday() >= 5 or d in festivity_dates:
+                if d.weekday() >= 5 or d in holiday_dates:
                     continue  # Skip weekends and festivities
 
                 assigned_shifts = scheduler.schedule[person_id].get(d, [])
@@ -332,7 +332,7 @@ class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
 
                 if not assigned_shifts and not is_vacation and not is_tirocinio and not had_night_before:
                     violations.append(
-                        f"Person {person_id} has no shift on {d} (weekday, not festivity, not vacation/tirocinio/night-rest)"
+                        f"Person {person_id} has no shift on {d} (weekday, not holiday, not vacation/tirocinio/night-rest)"
                     )
 
         passed = len(violations) == 0
@@ -350,7 +350,7 @@ class ConstraintRulesEngine:
             'personal': [],
             'work_hours': [],
             'forbidden': [],
-            'festivity': [],
+            'holiday': [],
             'custom': []
         }
         
@@ -409,9 +409,9 @@ class ConstraintRulesEngine:
             'forbidden_shifts', severity=ConstraintSeverity.CRITICAL
         ))
         
-        # Festivity constraint
-        self.add_constraint(FestivityConstraint(
-            'festivity_coverage', settings.get('festivity_staff', 1),
+        # Holiday constraint
+        self.add_constraint(HolidayConstraint(
+            'holiday_coverage', settings.get('holiday_staff', 1),
             severity=ConstraintSeverity.HIGH
         ))
         
@@ -431,8 +431,8 @@ class ConstraintRulesEngine:
             self.constraint_groups['work_hours'].append(constraint.constraint_id)
         elif isinstance(constraint, ForbiddenShiftsConstraint):
             self.constraint_groups['forbidden'].append(constraint.constraint_id)
-        elif isinstance(constraint, FestivityConstraint):
-            self.constraint_groups['festivity'].append(constraint.constraint_id)
+        elif isinstance(constraint, HolidayConstraint):
+            self.constraint_groups['holiday'].append(constraint.constraint_id)
         elif isinstance(constraint, CustomConstraint):
             self.constraint_groups['custom'].append(constraint.constraint_id)
     

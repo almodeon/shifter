@@ -15,12 +15,12 @@ from config_manager import ConfigManager
 from data_loader import DataLoader
 
 class HospitalScheduler:
-    def __init__(self, people_data=None, night_dates=None, festivity_dates=None, settings=None, config=None):
+    def __init__(self, people_data=None, night_dates=None, holiday_dates=None, settings=None, config=None):
         self.people = people_data or {}
         self.schedule = {}
         self.shift_counts = {}
         self.required_night_dates = night_dates or []
-        self.festivity_dates = festivity_dates or []
+        self.holiday_dates = holiday_dates or []
         self.warnings = []  # New: track warnings when shifts cannot be assigned
         
         # Initialize configuration manager
@@ -56,7 +56,7 @@ class HospitalScheduler:
         self.results = {}  # New property to store results
         
         self.logger.log('data_loading', 'info', f"Loaded {len(self.required_night_dates)} required night dates")
-        self.logger.log('data_loading', 'info', f"Loaded {len(self.festivity_dates)} festivity dates")
+        self.logger.log('data_loading', 'info', f"Loaded {len(self.holiday_dates)} holiday dates")
         self.logger.log('data_loading', 'info', f"Loaded {len(self.people)} people")
 
         # Create output directory if it doesn't exist
@@ -799,11 +799,11 @@ class HospitalScheduler:
         
         while current_date <= end_date:
             is_weekend = current_date.weekday() >= 5
-            is_festivity = current_date in self.festivity_dates
+            is_holiday = current_date in self.holiday_dates
             
-            if is_festivity:
-                # Festivity days need MP shifts
-                required_mp = self.settings.get('festivity_staff', 1)
+            if is_holiday:
+                # Holiday days need MP shifts
+                required_mp = self.settings.get('holiday_staff', 1)
                 actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
                 unassigned_count += max(0, required_mp - actual_mp)
                 
@@ -965,7 +965,7 @@ def main(settings_overrides=None):
         'saturday_afternoon_staff': 0,
         'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
         'sunday_staff': 1,
-        'festivity_staff': 1,  # Staff required for festivity days (MP shift)
+        'holiday_staff': 1,  # Staff required for holiday days (MP shift)
         
         # Working hours constraints
         'min_weekly_hours': 34,
@@ -994,7 +994,7 @@ def main(settings_overrides=None):
         'data_files': {
             'people_data_file': 'desiderata_original.csv',     # People/constraints data file with extension
             'night_dates_file': 'notti.csv',          # Required night dates file with extension
-            'festivity_dates_file': 'festivi.csv',     # Festivity dates file with extension
+            'holiday_dates_file': 'festivi.csv',     # Holiday dates file with extension
         },
         
         # Bias mitigation settings
@@ -1070,7 +1070,7 @@ def main(settings_overrides=None):
         
         # Constraint system settings (NEW)
         'constraint_system': {
-            'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'festivity'],
+            'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'holiday'],
             'disabled_constraints': [],  # List of specific constraint IDs to disable
             'custom_constraints': {},     # Custom constraint definitions
             'severity_levels': {
@@ -1114,7 +1114,7 @@ def main(settings_overrides=None):
     # --- CHANGED: Get file names from settings, not config ---
     people_file = settings['data_files']['people_data_file']
     night_file = settings['data_files']['night_dates_file']
-    festivity_file = settings['data_files']['festivity_dates_file']
+    holiday_file = settings['data_files']['holiday_dates_file']
     
     # Load data files directly with specified extensions
     people_data = data_loader.load_people_data(people_file, log_level='error')
@@ -1147,24 +1147,24 @@ def main(settings_overrides=None):
 
     print(f"🌙 Loaded {len(night_dates)} night dates from {night_file}")
     
-    # Load festivity dates
-    festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error')
+    # Load holiday dates
+    holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error')
     
     # If the specified file doesn't exist, try alternative formats
-    if not festivity_dates:
-        file_base = os.path.splitext(festivity_file)[0]
+    if not holiday_dates:
+        file_base = os.path.splitext(holiday_file)[0]
         for ext in ['xlsx', 'xls', 'csv']:
             alt_file = f'{file_base}.{ext}'
-            if os.path.exists(alt_file) and alt_file != festivity_file:
-                print(f"🎉 File {festivity_file} not found, trying {alt_file}...")
-                festivity_dates = data_loader.load_festivity_dates(alt_file, log_level='error')
-                if festivity_dates:
+            if os.path.exists(alt_file) and alt_file != holiday_file:
+                print(f"🎉 File {holiday_file} not found, trying {alt_file}...")
+                holiday_dates = data_loader.load_holiday_dates(alt_file, log_level='error')
+                if holiday_dates:
                     break
 
-    print(f"🎉 Loaded {len(festivity_dates)} festivity dates from {festivity_file}")
+    print(f"🎉 Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
 
     # Validate loaded data
-    is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)
+    is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, holiday_dates)
     if not is_valid:
         print("⚠️  Data validation errors:")
         for error in validation_errors:
@@ -1178,7 +1178,7 @@ def main(settings_overrides=None):
     scheduler = HospitalScheduler(
         people_data=people_data, 
         night_dates=night_dates,
-        festivity_dates=festivity_dates,
+        holiday_dates=holiday_dates,
         settings=settings,  # Pass the merged settings here
         config=config       # And also pass the config manager
     )
@@ -1244,10 +1244,10 @@ if __name__ == "__main__":
         'data_files': {
             'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
             'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
-            'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
+            'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
             # 'people_data_file': 'desiderata_empty.csv',     # People/constraints data file with extension
             # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
-            # 'festivity_dates_file': 'festivi_empty.csv',     # Festivity dates file with extension
+            # 'holiday_dates_file': 'festivi_empty.csv',     # Holiday dates file with extension
         },
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {

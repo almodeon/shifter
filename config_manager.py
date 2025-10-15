@@ -24,7 +24,7 @@ class ConfigManager:
             'saturday_afternoon_staff': 0,
             'saturday_mp_staff': 1,        # Staff required for Saturday MP shift
             'sunday_staff': 1,
-            'festivity_staff': 1,  # Staff required for festivity days (MP shift)
+            'holiday_staff': 1,  # Staff required for holiday days (MP shift)
             
             # Working hours constraints
             'min_weekly_hours': 34,
@@ -53,7 +53,7 @@ class ConfigManager:
             'data_files': {
                 'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
                 'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
-                'festivity_dates_file': 'festivi_NOV.csv',     # Festivity dates file with extension
+                'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
             },
             
             # Bias mitigation settings
@@ -129,7 +129,7 @@ class ConfigManager:
             
             # Constraint system settings (NEW)
             'constraint_system': {
-                'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'festivity'],
+                'enabled_constraint_groups': ['staffing', 'personal', 'work_hours', 'forbidden', 'holiday'],
                 'disabled_constraints': [],  # List of specific constraint IDs to disable
                 'custom_constraints': {},     # Custom constraint definitions
                 'severity_levels': {
@@ -240,7 +240,7 @@ class ConfigManager:
         
         # Validate data file settings
         data_files = self.get('data_files', {})
-        required_files = ['people_data_file', 'night_dates_file', 'festivity_dates_file']
+        required_files = ['people_data_file', 'night_dates_file', 'holiday_dates_file']
         for file_key in required_files:
             file_name = data_files.get(file_key, '')
             if not isinstance(file_name, str) or not file_name.strip():
@@ -401,7 +401,7 @@ class ConfigManager:
             print(f"  Afternoon (max): {self.get('target_afternoon_staff')}")
             print(f"  Night: {self.get('night_staff')}")
             print(f"  Sunday MP: {self.get('sunday_staff')}")
-            print(f"  Festivity MP: {self.get('festivity_staff')}")
+            print(f"  Holiday MP: {self.get('holiday_staff')}")
             
             print(f"\nWorking Hours:")
             print(f"  Weekly range: {self.get('min_weekly_hours')}-{self.get('max_weekly_hours')}h")
@@ -423,7 +423,7 @@ class ConfigManager:
             print(f"\nData Files:")
             print(f"  People data: {self.get('data_files.people_data_file')} (.csv/.xlsx/.xls)")
             print(f"  Night dates: {self.get('data_files.night_dates_file')} (.csv/.xlsx/.xls)")
-            print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')} (.csv/.xlsx/.xls)")
+            print(f"  Holiday dates: {self.get('data_files.holiday_dates_file')} (.csv/.xlsx/.xls)")
             print(f"  Prevent consecutive weekends: {'YES' if self.get('prevent_consecutive_weekend_days') else 'NO'}")
         
         # Print all current settings (flattened)

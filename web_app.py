@@ -160,8 +160,8 @@ def process_schedule(request_data):
             
             people_file = config.get('data_files.people_data_file')
             night_file = config.get('data_files.night_dates_file')
-            festivity_file = config.get('data_files.festivity_dates_file')
-            print(f"Debug mode: Using default files {people_file}, {night_file}, {festivity_file}")
+            holiday_file = config.get('data_files.holiday_dates_file')
+            print(f"Debug mode: Using default files {people_file}, {night_file}, {holiday_file}")
             
             # Load data files with fallback logic (like main.py)
             people_data = data_loader.load_people_data(people_file, log_level='error')
@@ -188,23 +188,23 @@ def process_schedule(request_data):
                         if night_dates:
                             break
             
-            # Load festivity dates
-            festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error')
+            # Load holiday dates
+            holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error')
             
             # If the specified file doesn't exist, try alternative formats
-            if not festivity_dates:
-                file_base = os.path.splitext(festivity_file)[0]
+            if not holiday_dates:
+                file_base = os.path.splitext(holiday_file)[0]
                 for ext in ['xlsx', 'xls', 'csv']:
                     alt_file = f'{file_base}.{ext}'
-                    if os.path.exists(alt_file) and alt_file != festivity_file:
-                        festivity_dates = data_loader.load_festivity_dates(alt_file, log_level='error')
-                        if festivity_dates:
+                    if os.path.exists(alt_file) and alt_file != holiday_file:
+                        holiday_dates = data_loader.load_holiday_dates(alt_file, log_level='error')
+                        if holiday_dates:
                             break
         else:
             # Save uploaded files and load from them (existing logic)
             people_file = None
             night_file = None
-            festivity_file = None
+            holiday_file = None
             
             # Write files from extracted data
             if 'people_file' in files:
@@ -217,21 +217,21 @@ def process_schedule(request_data):
                 with open(night_file, 'wb') as f:
                     f.write(files['night_file']['content'])
             
-            if 'festivity_file' in files:
-                festivity_file = os.path.join(temp_dir, 'festivities.' + files['festivity_file']['filename'].split('.')[-1])
-                with open(festivity_file, 'wb') as f:
-                    f.write(files['festivity_file']['content'])
+            if 'holiday_file' in files:
+                holiday_file = os.path.join(temp_dir, 'festivities.' + files['holiday_file']['filename'].split('.')[-1])
+                with open(holiday_file, 'wb') as f:
+                    f.write(files['holiday_file']['content'])
             
             # Load data using DataLoader
             people_data = data_loader.load_people_data(people_file, log_level='error') if people_file else {}
             night_dates = data_loader.load_night_dates(night_file, log_level='error') if night_file else []
-            festivity_dates = data_loader.load_festivity_dates(festivity_file, log_level='error') if festivity_file else []
+            holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error') if holiday_file else []
         
         # Create config manager (now available for both modes)
         config = ConfigManager()
         
         # Validate loaded data
-        is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, festivity_dates)
+        is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, holiday_dates)
         if not is_valid:
             error_msg = "Data validation errors: " + "; ".join(validation_errors)
             raise Exception(error_msg)
@@ -250,7 +250,7 @@ def process_schedule(request_data):
             'saturday_afternoon_staff': int(form.get('saturday_afternoon_staff', 0)),
             'saturday_mp_staff': int(form.get('saturday_mp_staff', 1)),
             'sunday_staff': int(form.get('sunday_staff', 1)),
-            'festivity_staff': int(form.get('festivity_staff', 1)),
+            'holiday_staff': int(form.get('holiday_staff', 1)),
             
             # Work limits (all exposed in web form)
             'max_weekend_days_per_month': int(form.get('max_weekend_days_per_month', 2)),
@@ -323,7 +323,7 @@ def process_schedule(request_data):
         scheduler = HospitalScheduler(
             people_data=people_data,
             night_dates=night_dates,
-            festivity_dates=festivity_dates,
+            holiday_dates=holiday_dates,
             settings=form_overrides,  # Only pass the form overrides
             config=config
         )
@@ -401,7 +401,7 @@ def process_schedule(request_data):
                 'total_shifts': person_data[3] + person_data[4] + person_data[5] + person_data[6],  # M + P + MP + N
                 'avg_hours_per_week': float(person_data[10]),  # avg_hours_per_week (already formatted as string, convert to float)
                 'ferie_days': person_data[7],     # ferie_count (vacation days)
-                'mp_shifts': person_data[5],      # mp_count (festivity/weekend all-day shifts)
+                'mp_shifts': person_data[5],      # mp_count (holiday/weekend all-day shifts)
                 'tirocinio_days': person_data[8]  # tirocinio_count (internship days)
             }
             

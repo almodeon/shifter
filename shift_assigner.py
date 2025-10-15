@@ -32,9 +32,9 @@ class ShiftAssigner:
         self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 1: ASSIGNING ALL NIGHT SHIFTS ===")
         self.assign_all_night_shifts(dates_list, people_list)
         
-        # PHASE 2: Assign ALL festivity shifts (NEW - MINIMAL CHANGE)
-        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 2: ASSIGNING ALL FESTIVITY SHIFTS ===")
-        self.assign_all_festivity_shifts(dates_list, people_list)
+        # PHASE 2: Assign ALL holiday shifts (NEW - MINIMAL CHANGE)
+        self.scheduler.logger.log('shift_assignment_debug', 'info', "\n=== PHASE 2: ASSIGNING ALL HOLIDAY SHIFTS ===")
+        self.assign_all_holiday_shifts(dates_list, people_list)
         
         # Pre-calculate afternoon targets after night shifts are assigned (for workload balancing)
         if self.scheduler.settings['workload_balancing']['enabled']:
@@ -91,19 +91,19 @@ class ShiftAssigner:
                     self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
                     self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
-    def assign_all_festivity_shifts(self, dates_list, people_list):
-        """Assign festivity MP shifts with high priority (NEW - MINIMAL METHOD)"""
-        festivity_dates = [date for date in dates_list if date in self.scheduler.festivity_dates]
+    def assign_all_holiday_shifts(self, dates_list, people_list):
+        """Assign holiday MP shifts with high priority (NEW - MINIMAL METHOD)"""
+        holiday_dates = [date for date in dates_list if date in self.scheduler.holiday_dates]
         
-        for date in festivity_dates:
-            required_people = self.scheduler.settings.get('festivity_staff', 1)
+        for date in holiday_dates:
+            required_people = self.scheduler.settings.get('holiday_staff', 1)
             for i in range(required_people):
                 best_person = self.find_best_person_for_shift(people_list, date, 'mp')
                 if best_person:
                     self._assign_shift(best_person, date, 'mp')
-                    self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned festivity MP: {best_person} on {date}")
+                    self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned holiday MP: {best_person} on {date}")
                 else:
-                    failure_msg = f"Failed to assign festivity MP shift on {date} (position {i+1})"
+                    failure_msg = f"Failed to assign holiday MP shift on {date} (position {i+1})"
                     self.scheduler.warnings.append(failure_msg)
                     self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
@@ -112,9 +112,9 @@ class ShiftAssigner:
         weekend_dates = [date for date in dates_list if date.weekday() >= 5]
         
         for date in weekend_dates:
-            is_festivity = date in self.scheduler.festivity_dates
+            is_holiday = date in self.scheduler.holiday_dates
             
-            if is_festivity:
+            if is_holiday:
                 # Skip - festivities already handled in Phase 2
                 continue
             
@@ -173,7 +173,7 @@ class ShiftAssigner:
 
     def assign_all_afternoon_shifts(self, dates_list, people_list):
         """Assign all afternoon shifts across all weekdays"""
-        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.festivity_dates]
+        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.holiday_dates]
         
         for date in weekday_dates:
             required_people = self.scheduler.settings['target_afternoon_staff']
@@ -188,7 +188,7 @@ class ShiftAssigner:
 
     def assign_all_morning_shifts(self, dates_list, people_list):
         """Assign all morning shifts across all weekdays"""
-        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.festivity_dates]
+        weekday_dates = [date for date in dates_list if date.weekday() < 5 and date not in self.scheduler.holiday_dates]
         
         for date in weekday_dates:
             required_people = self.scheduler.settings['min_morning_staff']
@@ -343,9 +343,9 @@ class ShiftAssigner:
         if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
             return False, "tirocinio day (already has tirocinio morning shift)"
         
-        # Don't add extra shifts on festivity days
-        if date in self.scheduler.festivity_dates:
-            return False, "festivity day (only MP shifts allowed)"
+        # Don't add extra shifts on holiday days
+        if date in self.scheduler.holiday_dates:
+            return False, "holiday day (only MP shifts allowed)"
         
         # Check if this date is blocked for rest after night shift
         current_shifts = self.scheduler.schedule[person_id].get(date, [])
@@ -1161,19 +1161,19 @@ class ShiftAssigner:
             assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
             
             # Add hours for vacation days (each vacation day counts as a morning shift),
-            # but only if it's a weekday and not a festivity/holiday
+            # but only if it's a weekday and not a holiday/holiday
             if (
                 'vacation_dates' in person and
                 date in person['vacation_dates'] and
                 date.weekday() < 5 and
-                date not in self.scheduler.festivity_dates
+                date not in self.scheduler.holiday_dates
             ):
                 hours += self.scheduler.settings['morning_shift_hours']
                 self.logger.log('fill_up_minimum_hours', 'debug', 
                               f"Person {person_id} on {date}: +{self.scheduler.settings['morning_shift_hours']}h vacation day")
             if force_debug:
                 import pprint
-                print(f"Person {person_id} on {date}: assigned shifts = {assigned_shifts}, vacation = {date in person.get('vacation_dates', [])}, festivity = {date in self.scheduler.festivity_dates}, vacation days: {person.get('vacation_dates', [])}")
+                print(f"Person {person_id} on {date}: assigned shifts = {assigned_shifts}, vacation = {date in person.get('vacation_dates', [])}, holiday = {date in self.scheduler.holiday_dates}, vacation days: {person.get('vacation_dates', [])}")
                 print(f"DEBUG: person_id={person_id}, vacation_dates={person.get('vacation_dates', [])}, types={[type(d) for d in person.get('vacation_dates', [])]}")
                 print(f"DEBUG FULL PERSON STRUCTURE for {person_id}:")
                 for k, v in person.items():

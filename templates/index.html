@@ -235,8 +235,8 @@
                 </div>
                 
                 <div class="form-group">
-                    <label>Festivity Dates (Optional):</label>
-                    <input type="file" name="festivity_file" accept=".csv,.xlsx,.xls">
+                    <label>Holiday Dates (Optional):</label>
+                    <input type="file" name="holiday_file" accept=".csv,.xlsx,.xls">
                 </div>
                 
                 <div class="form-group">
@@ -319,7 +319,7 @@
                                     'Saturday Afternoon Staff': 'Required staff for Saturday afternoon shifts.',
                                     'Saturday All-Day Staff': 'Required staff for Saturday all-day (MP) shifts.',
                                     'Sunday All-Day Staff': 'Required staff for Sunday all-day (MP) shifts.',
-                                    'Festivity All-Day Staff': 'Required staff for festivity/holiday all-day shifts.',
+                                    'Holiday All-Day Staff': 'Required staff for holiday/holiday all-day shifts.',
                                     'Monthly Night Limits': 'Maximum number of night shifts per person per month.',
                                     'Monthly Weekend Limits': 'Maximum number of weekend days per person per month.',
                                     'Forbidden Shifts': 'No staff assigned to forbidden shifts or during vacation.',
@@ -330,7 +330,7 @@
                                     'Afternoon Balancing': 'Afternoon shifts are balanced across staff.',
                                     'Night Priority': 'Night shifts are distributed fairly.',
                                     'Weekend Priority': 'Weekend shifts are distributed fairly.',
-                                    'Festivity Coverage': 'All festivity/holiday shifts are covered.',
+                                    'Holiday Coverage': 'All holiday/holiday shifts are covered.',
                                     'Target Afternoon Staff': 'Afternoon staff targets are met.',
                                     'Max Consecutive Days': 'No one exceeds the maximum allowed consecutive working days.',
                                     'Unassigned Shifts': 'All shifts are assigned to staff.'
@@ -468,8 +468,8 @@
                                     <input type="number" name="sunday_staff" value="1" min="0" max="10">
                                 </div>
                                 <div class="form-group">
-                                    <label title="Number of staff required for festivity (holiday) all-day shifts">Festivity all-day staff:</label>
-                                    <input type="number" name="festivity_staff" value="1" min="0" max="10">
+                                    <label title="Number of staff required for holiday (holiday) all-day shifts">Holiday all-day staff:</label>
+                                    <input type="number" name="holiday_staff" value="1" min="0" max="10">
                                 </div>
                             </div>
                         </div>

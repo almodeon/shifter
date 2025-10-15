@@ -24,9 +24,9 @@ class ExportManager:
         
         all_dates = sorted(list(all_dates))
         
-        # Create header: Date, Day, Festivity, Night_Coverage, Morning Count, Afternoon Count, Night Count, then person columns, then Warnings
+        # Create header: Date, Day, Holiday, Night_Coverage, Morning Count, Afternoon Count, Night Count, then person columns, then Warnings
         people_ids = sorted(self.scheduler.people.keys())
-        header = ['Date', 'Day', 'Festivity', 'Night_Coverage', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff'] + people_ids + ['Warnings']
+        header = ['Date', 'Day', 'Holiday', 'Night_Coverage', 'Morning_Staff', 'Afternoon_Staff', 'Night_Staff'] + people_ids + ['Warnings']
         
         rows = [header]
         
@@ -34,16 +34,16 @@ class ExportManager:
         for date in all_dates:
             day_name = date.strftime('%A')
             
-            # Check if this is a festivity day
-            is_festivity = date in self.scheduler.festivity_dates
-            festivity_marker = '*' if is_festivity else ''
+            # Check if this is a holiday day
+            is_holiday = date in self.scheduler.holiday_dates
+            holiday_marker = '*' if is_holiday else ''
             
             # Check if night coverage is required on this date
             is_night_required = date in self.scheduler.required_night_dates
             night_coverage_marker = '*' if is_night_required else ''
             
             # Check if this is a weekend or holiday
-            is_weekend_or_holiday = date.weekday() >= 5 or is_festivity
+            is_weekend_or_holiday = date.weekday() >= 5 or is_holiday
             
             # Count staff for each shift type on this date
             morning_count = 0
@@ -127,11 +127,11 @@ class ExportManager:
             date_warnings = [w for w in self.scheduler.warnings if date.strftime('%Y-%m-%d') in w]
             warnings_str = "; ".join(date_warnings) if date_warnings else ""
 
-            # Create row: Date, Day, Festivity, Night_Coverage, Staff counts, then person shifts, then Warnings
+            # Create row: Date, Day, Holiday, Night_Coverage, Staff counts, then person shifts, then Warnings
             row = [
                 date.strftime('%d/%m/%Y'),
                 day_name,
-                festivity_marker,
+                holiday_marker,
                 night_coverage_marker,
                 morning_count,
                 afternoon_count, 
@@ -210,8 +210,8 @@ class ExportManager:
         total_days = (end_date - start_date).days + 1
         total_weeks = total_days / 7
         all_dates = [start_date + timedelta(days=i) for i in range(total_days)]
-        festivity_dates = set(getattr(self.scheduler, 'festivity_dates', []))
-        holidays = festivity_dates  # alias for clarity
+        holiday_dates = set(getattr(self.scheduler, 'holiday_dates', []))
+        holidays = holiday_dates  # alias for clarity
 
         staff_data = []
 
@@ -485,7 +485,7 @@ class ExportManager:
             actual_constraints = [
                 'weekday_morning_staff', 'weekday_afternoon_staff', 'saturday_morning_staff', 
                 'sunday_mp_staff', 'monthly_night_limits', 'monthly_weekend_limits',
-                'weekly_hours', 'forbidden_shifts', 'festivity_coverage'
+                'weekly_hours', 'forbidden_shifts', 'holiday_coverage'
             ]
         
         # Get all person IDs for creating person-specific columns
@@ -501,7 +501,7 @@ class ExportManager:
             'monthly_weekend_limits': 'Month_Wknd',
             'weekly_hours': 'Week_Hrs',
             'forbidden_shifts': 'Forbidden',
-            'festivity_coverage': 'Festivity',
+            'holiday_coverage': 'Holiday',
             # Legacy names (in case old constraint names are still used)
             'forbidden_shifts': 'ForbShifts',
             'target_afternoon_staff': 'MaxAftnPers',
@@ -786,8 +786,8 @@ class ExportManager:
                     vacs.append(entry['date'].strftime('%Y-%m-%d'))
             vacations_data[person_id] = vacs
 
-        # Holidays (festivity dates)
-        holidays_data = [d.strftime('%Y-%m-%d') for d in getattr(self.scheduler, 'festivity_dates', [])]
+        # Holidays (holiday dates)
+        holidays_data = [d.strftime('%Y-%m-%d') for d in getattr(self.scheduler, 'holiday_dates', [])]
 
         # --- NEW: Add statistics (including detailed breakdowns) ---
         from datetime import timedelta
@@ -1070,7 +1070,7 @@ class ExportManager:
         input_files = [
             self.scheduler.settings['data_files']['people_data_file'],
             self.scheduler.settings['data_files']['night_dates_file'],
-            self.scheduler.settings['data_files']['festivity_dates_file']
+            self.scheduler.settings['data_files']['holiday_dates_file']
         ]
         
         for file in input_files:
