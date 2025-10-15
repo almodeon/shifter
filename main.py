@@ -22,7 +22,8 @@ class HospitalScheduler:
         self.required_night_dates = night_dates or []
         self.holiday_dates = holiday_dates or []
         self.warnings = []  # New: track warnings when shifts cannot be assigned
-        
+        self.results = {'multi_run_ranking': []}  # New property to store results
+
         # Initialize configuration manager
         if config is None:
             self.config = ConfigManager()
@@ -446,18 +447,16 @@ class HospitalScheduler:
                     print(f"{rank:<4} {run['run_id']+1:<4} {run['passed_count']:<8} {run['warning_count']:<8} {run['unassigned_count']:<10} {run['hour_difference']:<8}")
 
         # Export detailed ranking to CSV (ALL RUNS, not just best passes)
-        self._export_multi_run_ranking(
-            sorted(
-                all_runs,  # <--- always export all runs
-                key=lambda x: (
-                    x['unassigned_count'] if prioritize_minimal_unassigned else -x['passed_count'],
-                    -x['passed_count'] if prioritize_minimal_unassigned else x['warning_count'],
+        self.results['multi_run_ranking'] = sorted(
+            all_runs,  # <--- always export all runs
+            key=lambda x: (
+                x['unassigned_count'] if prioritize_minimal_unassigned else -x['passed_count'],
+                -x['passed_count'] if prioritize_minimal_unassigned else x['warning_count'],
                     x['warning_count'],
                     x['hour_difference'],
                     x.get('discrimination_score', float('inf'))
                 )
             )
-        )
         
         # Restore the best run's state to the scheduler
         if best_schedule:
@@ -474,10 +473,14 @@ class HospitalScheduler:
         
         return self.schedule
     
-    def _export_multi_run_ranking(self, sorted_runs):
+    def export_multi_run_ranking(self, filename='multi_run_ranking.csv'):
         """Export multi-run ranking to CSV - delegates to ExportManager"""
-        self.export_manager.export_multi_run_ranking(sorted_runs)
-    
+        if not self.results.get('multi_run_ranking'):
+            self.logger.log('multi_run_optimization', 'error', "No multi-run ranking data available to export.")
+            return
+        self.logger.log('multi_run_optimization', 'info', f"Exporting multi-run ranking to file: {filename}")
+        self.export_manager.export_multi_run_ranking(self.results['multi_run_ranking'], filename)
+
     def _generate_schedule_single(self, start_date, end_date):
         """Generate a single schedule (original implementation)"""
         current_date = start_date
@@ -1212,6 +1215,7 @@ def main(settings_overrides=None):
     # Export results
     scheduler.export_to_csv('schedule_output.csv', start_date, end_date)
     scheduler.export_staff_statistics_to_csv(start_date, end_date, 'staff_statistics.csv')
+    scheduler.export_multi_run_ranking('multi_run_ranking.csv')
     
     # Export debug information if available
     if hasattr(scheduler, 'assignment_failures'):

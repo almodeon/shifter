@@ -338,9 +338,14 @@ def process_schedule(request_data):
         stats_file = f'staff_statistics_{timestamp}.csv'
         json_file = f'schedule_{timestamp}.json'
         docx_file = f'schedule_{timestamp}.docx'
+        multi_run_ranking_file = f'multi_run_ranking_{timestamp}.csv'
 
+        # print(f"Exporting schedule to {os.path.join(output_dir, schedule_file)}")
         scheduler.export_to_csv(os.path.join(output_dir, schedule_file), start_date, end_date)
+        # print(f"Exporting staff statistics to {os.path.join(output_dir, stats_file)}")
         scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
+        # print(f"Exporting multi-run ranking to {os.path.join(output_dir, multi_run_ranking_file)}")
+        scheduler.export_multi_run_ranking(os.path.join(output_dir, multi_run_ranking_file))
         # Export JSON for DOCX generation
         scheduler.export_manager.export_schedule_json(os.path.join(output_dir, json_file))
         # Save all data to the specified output folder
@@ -427,8 +432,6 @@ def process_schedule(request_data):
         
         # Sort constraints: failed first, then passed
         constraint_details.sort(key=lambda x: (x['status'] == 'PASS', x['name']))
-
-        print(scheduler.export_manager.output_files)
         
         # Create results
         if failed_count == 0:

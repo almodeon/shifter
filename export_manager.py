@@ -478,10 +478,10 @@ class ExportManager:
         self.output_files['staff_statistics'] = output_file  # Save for later collection
         return staff_data
     
-    def export_multi_run_ranking(self, sorted_runs):
+    def export_multi_run_ranking(self, sorted_runs, filename='multi_run_ranking.csv'):
         """Export multi-run ranking to CSV"""
-        ranking_file = os.path.join(self.scheduler.output_dir, 'multi_run_ranking.csv')
-        
+        ranking_file = filename
+        print(f"Exporting multi-run ranking to {ranking_file}")
         # Get actual constraint names from the first run's results
         if sorted_runs and sorted_runs[0]['constraint_results']:
             actual_constraints = list(sorted_runs[0]['constraint_results'].keys())
@@ -608,6 +608,7 @@ class ExportManager:
                 writer.writerow(row)
         
         self.logger.log('export_notifications', 'info', f"Detailed ranking exported to: {ranking_file}")
+        self.output_files['multi_run_ranking'] = ranking_file
     
     def _calculate_person_hours_from_run(self, run, person_id):
         """Calculate total hours for a person from a specific run's data"""
@@ -1141,9 +1142,9 @@ class ExportManager:
                 if os.path.exists(file_path):
                     shutil.copy(file_path, date_folder)
 
-        # Also save multi_run_ranking.csv if it exists in output dir (even if not in self.output_files)
-        multi_run_ranking_path = os.path.join(self.scheduler.output_dir, 'multi_run_ranking.csv')
-        if os.path.exists(multi_run_ranking_path):
+        # Save multi_run_ranking.csv from self.output_files if present
+        multi_run_ranking_path = self.output_files.get('multi_run_ranking')
+        if multi_run_ranking_path and os.path.exists(multi_run_ranking_path):
             shutil.copy(multi_run_ranking_path, date_folder)
 
         # Save logs
