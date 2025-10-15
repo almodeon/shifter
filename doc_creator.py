@@ -225,7 +225,7 @@ class ScheduleDocxCreator:
                 labels.append(label)
             return f"{int(day)} ({'/'.join(labels)})"
 
-    def create_doc(self):
+    def create_doc(self, settings=None):
         # --- LOAD JSON AND PARSE SCHEDULE ---
         with open(self.json_path, encoding="utf-8") as f:
             data = json.load(f)

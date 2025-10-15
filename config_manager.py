@@ -139,6 +139,24 @@ class ConfigManager:
                     'LOW': False        # Hide low priority violations
                 }
             },
+
+            # Output files configuration
+            'docx_output': {
+                'enabled': True, # NOT USED YET
+                'output_path': 'output/schedule.docx', # NOT USED YET
+                'show_violations': {
+                    'understaffed_shifts': True,
+                    'person_at_home': True,
+                }
+            },
+            'csv_output': {
+                'enabled': True, # NOT USED YET
+                'output_path': 'output/schedule.csv' # NOT USED YET
+            },
+            'multi_run_ranking': {
+                'enabled': True, # NOT USED YET
+                'output_path': 'output/multi_run_ranking.csv' # NOT USED YET
+            }
         }
         return base_settings
     

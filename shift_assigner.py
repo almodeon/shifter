@@ -1148,20 +1148,13 @@ class ShiftAssigner:
         """Calculate hours worked in a week starting from week_start"""
         hours = 0
         person = self.scheduler.people[person_id]
-        
+
         for i in range(7):
             date = week_start + timedelta(days=i)
-            
-            # Check if person has tirocinio on this date (weekdays only)
-            is_tirocinio_day = ('tirocinio_dates' in person and 
-                              date in person['tirocinio_dates'] and 
-                              date.weekday() < 5)  # Monday-Friday only
-            
-            # Check assigned shifts for this date
+
             assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
-            
-            # Add hours for vacation days (each vacation day counts as a morning shift),
-            # but only if it's a weekday and not a holiday/holiday
+
+            # Vacation logic (unchanged)
             if (
                 'vacation_dates' in person and
                 date in person['vacation_dates'] and
@@ -1171,25 +1164,42 @@ class ShiftAssigner:
                 hours += self.scheduler.settings['morning_shift_hours']
                 self.logger.log('fill_up_minimum_hours', 'debug', 
                               f"Person {person_id} on {date}: +{self.scheduler.settings['morning_shift_hours']}h vacation day")
-            if force_debug:
-                import pprint
-                print(f"Person {person_id} on {date}: assigned shifts = {assigned_shifts}, vacation = {date in person.get('vacation_dates', [])}, holiday = {date in self.scheduler.holiday_dates}, vacation days: {person.get('vacation_dates', [])}")
-                print(f"DEBUG: person_id={person_id}, vacation_dates={person.get('vacation_dates', [])}, types={[type(d) for d in person.get('vacation_dates', [])]}")
-                print(f"DEBUG FULL PERSON STRUCTURE for {person_id}:")
-                for k, v in person.items():
-                    print(f"{k}:\n{pprint.pformat(v)}\n")
 
-            # Add hours for tirocinio morning shift (if applicable)
-            if is_tirocinio_day:
-                # Person gets tirocinio morning hours UNLESS they have afternoon shift
+            # --- NEW LOGIC: Tirocinio and night shift interaction ---
+            is_tirocinio_day = (
+                'tirocinio_dates' in person and
+                date in person['tirocinio_dates'] and
+                date.weekday() < 5
+            )
+
+            # Check if night shift is assigned on this day or previous day
+            # print(f"Debug: Person {person_id} on {date}, assigned shifts: {assigned_shifts}")
+            has_night_today = 'night' in assigned_shifts
+            prev_date = date - timedelta(days=1)
+            has_night_prev = 'night' in self.scheduler.schedule[person_id].get(prev_date, [])
+            # print(f"Debug: has_night_today={has_night_today}, has_night_prev={has_night_prev}")
+            
+            # Only add tirocinio hours if:
+            # - It's a tirocinio day
+            # - No night shift on this day
+            # - No night shift on previous day (i.e., not resting after night)
+            # - No afternoon or mp shift on this day
+            
+            # print(f"Debug: Before tirocinio check, total hours: {hours}")
+            if is_tirocinio_day and not has_night_today and not has_night_prev:
                 if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
                     hours += self.scheduler.settings['morning_shift_hours']
                     self.logger.log('fill_up_minimum_hours', 'debug', 
                                   f"Person {person_id} on {date}: +{self.scheduler.settings['morning_shift_hours']}h tirocinio morning")
                 else:
                     self.logger.log('fill_up_minimum_hours', 'debug', 
-                                  f"Person {person_id} on {date}: skipping tirocinio morning (has afternoon shift)")
-            
+                                  f"Person {person_id} on {date}: skipping tirocinio morning (has afternoon/mp shift)")
+            elif is_tirocinio_day and (has_night_today or has_night_prev):
+                self.logger.log('fill_up_minimum_hours', 'debug', 
+                              f"Person {person_id} on {date}: skipping tirocinio morning (night shift assigned on this or previous day)")
+
+            # print(f"Debug: After tirocinio check, total hours: {hours}")
+
             # Add hours for regular assigned shifts
             for shift in assigned_shifts:
                 if shift == 'morning':
@@ -1201,7 +1211,7 @@ class ShiftAssigner:
                 elif shift == 'night':
                     hours += self.scheduler.settings['night_shift_hours']
                 # Don't count 'rest_after_night' as hours
-        
+
         return hours
     
     def _assign_shift(self, person_id, date, shift):

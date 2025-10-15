@@ -290,21 +290,24 @@ class ExportManager:
                         elif is_holiday:
                             night_holiday += 1
 
-            # Calculate tirocinio hours and count tirocinio days (NEW)
+            # Calculate tirocinio hours and count tirocinio days (UPDATED LOGIC)
             tirocinio_hours = 0
             tirocinio_count = 0
             for date in all_dates:
                 if date.weekday() < 5:  # Monday-Friday only
                     is_tirocinio_day = ('tirocinio_dates' in person and 
                                       date in person['tirocinio_dates'])
-                    
                     if is_tirocinio_day:
                         assigned_shifts = self.scheduler.schedule[person_id].get(date, [])
-                        # Person gets tirocinio morning hours UNLESS they have afternoon shift
-                        if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
+                        prev_date = date - timedelta(days=1)
+                        has_night_today = 'night' in assigned_shifts
+                        has_night_prev = 'night' in self.scheduler.schedule[person_id].get(prev_date, [])
+                        # Person gets tirocinio morning hours UNLESS they have afternoon/mp shift or a night shift on this or previous day
+                        if (not has_night_today and not has_night_prev and
+                            'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts):
                             tirocinio_hours += self.scheduler.settings['morning_shift_hours']
                             tirocinio_count += 1
-            
+
             # Calculate vacation hours and count vacation days (weekday vacation days count as morning shift hours)
             vacation_hours = 0
             ferie_count = 0
@@ -315,17 +318,17 @@ class ExportManager:
                     if vacation_date in all_dates and vacation_date.weekday() < 5:  # Monday-Friday only
                         vacation_hours += self.scheduler.settings['morning_shift_hours']
                         ferie_count += 1
-            
+
             # Total hours including vacation and tirocinio
             total_hours = shift_hours + vacation_hours + tirocinio_hours
-            
+
             # Average hours per week
             avg_hours_per_week = total_hours / total_weeks if total_weeks > 0 else 0
-            
+
             # Get priorities
             night_priority = person.get('night_priority', 0)
             weekend_priority = person.get('weekend_priority', 0)
-            
+
             # --- Compose extended stats row ---
             staff_data.append([
                 person_id,                    # 0
@@ -480,7 +483,7 @@ class ExportManager:
     
     def export_multi_run_ranking(self, sorted_runs, filename='multi_run_ranking.csv'):
         """Export multi-run ranking to CSV"""
-        ranking_file = filename
+        ranking_file = os.path.join(self.scheduler.output_dir, os.path.basename(filename))
         print(f"Exporting multi-run ranking to {ranking_file}")
         # Get actual constraint names from the first run's results
         if sorted_runs and sorted_runs[0]['constraint_results']:

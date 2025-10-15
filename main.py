@@ -1205,7 +1205,7 @@ def main(settings_overrides=None):
     # Always verify constraints on the final schedule (even after multi_run)
     print("\n🔍 Verifying constraints...")
     constraint_results = scheduler.verify_constraints(start_date, end_date)
-
+    
     # Print to console
     scheduler.print_schedule()
     
@@ -1230,7 +1230,7 @@ def main(settings_overrides=None):
 
     scheduler._log('data_loading', 'info', "Schedule generation completed!")
 
-    # --- DOCX EXPORT (add this block) ---
+    # Export to docx report
     try:
         from doc_creator import ScheduleDocxCreator
         docx_creator = ScheduleDocxCreator(
@@ -1238,7 +1238,7 @@ def main(settings_overrides=None):
             doc_path="output/schedule_output.docx"
             # Optionally add more settings here if needed
         )
-        docx_creator.create_doc()
+        docx_creator.create_doc(config.get('docx_output'))
         print("✅ DOCX exported to output/schedule_output.docx")
     except Exception as e:
         print(f"❌ DOCX export failed: {e}")
@@ -1256,7 +1256,7 @@ if __name__ == "__main__":
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
             'enabled': True,
-            'max_runs': 1000,
+            'max_runs': 100,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 100,
             'accumulate_best_pass_runs': True
