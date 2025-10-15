@@ -351,10 +351,27 @@ def process_schedule(request_data):
         # Export files using main.py methods
         schedule_file = f'schedule_{timestamp}.csv'
         stats_file = f'staff_statistics_{timestamp}.csv'
-        
+        json_file = f'schedule_{timestamp}.json'
+        docx_file = f'schedule_{timestamp}.docx'
+
         scheduler.export_to_csv(os.path.join(output_dir, schedule_file), start_date, end_date)
         scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
-        
+        # Export JSON for DOCX generation
+        scheduler.export_manager.export_schedule_json(os.path.join(output_dir, json_file))
+
+        # Generate DOCX using doc_creator
+        try:
+            from doc_creator import ScheduleDocxCreator
+            docx_creator = ScheduleDocxCreator(
+                json_path=os.path.join(output_dir, json_file),
+                doc_path=os.path.join(output_dir, docx_file)
+            )
+            docx_creator.create_doc()
+            docx_success = True
+        except Exception as e:
+            docx_success = False
+            docx_error = str(e)
+
         # Get staff statistics for detailed results panel using existing export manager method
         staff_data = scheduler.export_manager._get_staff_statistics_data(start_date, end_date)
         
@@ -436,18 +453,21 @@ def process_schedule(request_data):
             'staff_totals': staff_totals,
             'files': [
                 {'name': schedule_file, 'display_name': 'Schedule (CSV)'},
-                {'name': stats_file, 'display_name': 'Staff Statistics (CSV)'}
+                {'name': stats_file, 'display_name': 'Staff Statistics (CSV)'},
+                {'name': docx_file, 'display_name': 'Schedule (DOCX)'} if docx_success else None
             ],
             'warnings': scheduler.warnings if scheduler.warnings else None
         }
-        
+        # Remove None entries from files
+        results['files'] = [f for f in results['files'] if f]
+
         with job_lock:
             job_status = {'running': False, 'progress': '', 'error': None, 'results': results}
-        
+
         # Cleanup temp files
         import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
-        
+
     except Exception as e:
         with job_lock:
             job_status = {'running': False, 'progress': '', 'error': str(e), 'results': None}
