@@ -94,7 +94,7 @@ class ConfigManager:
                 },
                 'only_consider_best_passes': True,  # NEW
                 'target_best_pass_runs': 100,       # NEW
-                'accumulate_best_pass_runs': True  # NEW
+                'accumulate_best_pass_runs': False  # NEW
             },
             
             'afternoon_balancing': {
@@ -394,46 +394,38 @@ class ConfigManager:
     
     def print_summary(self) -> None:
         """Print a summary of current configuration"""
-        print("=== CONFIGURATION SUMMARY ===")
-        print(f"Staff Requirements:")
-        print(f"  Morning (weekdays): {self.get('min_morning_staff')}")
-        print(f"  Afternoon (max): {self.get('target_afternoon_staff')}")
-        print(f"  Night: {self.get('night_staff')}")
-        print(f"  Sunday MP: {self.get('sunday_staff')}")
-        print(f"  Festivity MP: {self.get('festivity_staff')}")
+        if False:
+            print("=== CONFIGURATION SUMMARY ===")
+            print(f"Staff Requirements:")
+            print(f"  Morning (weekdays): {self.get('min_morning_staff')}")
+            print(f"  Afternoon (max): {self.get('target_afternoon_staff')}")
+            print(f"  Night: {self.get('night_staff')}")
+            print(f"  Sunday MP: {self.get('sunday_staff')}")
+            print(f"  Festivity MP: {self.get('festivity_staff')}")
+            
+            print(f"\nWorking Hours:")
+            print(f"  Weekly range: {self.get('min_weekly_hours')}-{self.get('max_weekly_hours')}h")
+            print(f"  Shift durations: M={self.get('morning_shift_hours')}h, P={self.get('afternoon_shift_hours')}h, N={self.get('night_shift_hours')}h")
+            
+            print(f"\nConstraints:")
+            print(f"  Max consecutive days: {self.get('max_consecutive_days')}")
+            print(f"  Max weekend days/month: {self.get('max_weekend_days_per_month')}")
+            print(f"  Night shifts/month: {self.get('night_shifts_per_month')}")
+            
+            print(f"\nOptimization:")
+            print(f"  Workload balancing: {'ENABLED' if self.get('workload_balancing.enabled') else 'DISABLED'}")
+            print(f"  Multi-run optimization: {'ENABLED' if self.get('multi_run.enabled') else 'DISABLED'}")
+            print(f"  Fill minimum hours: {'YES' if self.get('fill_up_to_minimum_hours') else 'NO'}")
+            print(f"  Night priority: {'ENABLED' if self.get('priority_assignment.night_priority_enabled') else 'DISABLED'}")
+            print(f"  Weekend priority: {'ENABLED' if self.get('priority_assignment.weekend_priority_enabled') else 'DISABLED'}")
+            print(f"  Append statistics to CSV: {'YES' if self.get('append_statistics_to_schedule') else 'NO'}")
+            
+            print(f"\nData Files:")
+            print(f"  People data: {self.get('data_files.people_data_file')} (.csv/.xlsx/.xls)")
+            print(f"  Night dates: {self.get('data_files.night_dates_file')} (.csv/.xlsx/.xls)")
+            print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')} (.csv/.xlsx/.xls)")
+            print(f"  Prevent consecutive weekends: {'YES' if self.get('prevent_consecutive_weekend_days') else 'NO'}")
         
-        print(f"\nWorking Hours:")
-        print(f"  Weekly range: {self.get('min_weekly_hours')}-{self.get('max_weekly_hours')}h")
-        print(f"  Shift durations: M={self.get('morning_shift_hours')}h, P={self.get('afternoon_shift_hours')}h, N={self.get('night_shift_hours')}h")
-        
-        print(f"\nConstraints:")
-        print(f"  Max consecutive days: {self.get('max_consecutive_days')}")
-        print(f"  Max weekend days/month: {self.get('max_weekend_days_per_month')}")
-        print(f"  Night shifts/month: {self.get('night_shifts_per_month')}")
-        
-        print(f"\nOptimization:")
-        print(f"  Workload balancing: {'ENABLED' if self.get('workload_balancing.enabled') else 'DISABLED'}")
-        print(f"  Multi-run optimization: {'ENABLED' if self.get('multi_run.enabled') else 'DISABLED'}")
-        print(f"  Fill minimum hours: {'YES' if self.get('fill_up_to_minimum_hours') else 'NO'}")
-        print(f"  Night priority: {'ENABLED' if self.get('priority_assignment.night_priority_enabled') else 'DISABLED'}")
-        print(f"  Weekend priority: {'ENABLED' if self.get('priority_assignment.weekend_priority_enabled') else 'DISABLED'}")
-        print(f"  Append statistics to CSV: {'YES' if self.get('append_statistics_to_schedule') else 'NO'}")
-        
-        print(f"\nData Files:")
-        print(f"  People data: {self.get('data_files.people_data_file')} (.csv/.xlsx/.xls)")
-        print(f"  Night dates: {self.get('data_files.night_dates_file')} (.csv/.xlsx/.xls)")
-        print(f"  Festivity dates: {self.get('data_files.festivity_dates_file')} (.csv/.xlsx/.xls)")
-        print(f"  Prevent consecutive weekends: {'YES' if self.get('prevent_consecutive_weekend_days') else 'NO'}")
-        
-        # Show validation status
-        is_valid, errors = self.validate_settings()
-        print(f"\nValidation: {'✅ VALID' if is_valid else '❌ INVALID'}")
-        if errors:
-            for error in errors[:3]:  # Show first 3 errors
-                print(f"  - {error}")
-            if len(errors) > 3:
-                print(f"  ... and {len(errors) - 3} more errors")
-
         # Print all current settings (flattened)
         print("\n--- ALL CURRENT SETTINGS ---")
         def _print_settings(d, prefix=""):
@@ -443,6 +435,15 @@ class ConfigManager:
                 else:
                     print(f"{prefix}{k}: {v}")
         _print_settings(self.settings)
+
+        # Show validation status
+        is_valid, errors = self.validate_settings()
+        print(f"\nValidation: {'✅ VALID' if is_valid else '❌ INVALID'}")
+        if errors:
+            for error in errors[:3]:  # Show first 3 errors
+                print(f"  - {error}")
+            if len(errors) > 3:
+                print(f"  ... and {len(errors) - 3} more errors")
     
     def get_all_settings(self) -> Dict[str, Any]:
         """Get a copy of all current settings"""

@@ -270,7 +270,7 @@ def process_schedule(request_data):
                 'enabled': 'multi_run_enabled' in form,
                 'max_runs': int(form.get('max_runs', 1000)),
                 'silence_output': True,
-                'show_progress_bar': False,
+                'show_progress_bar': True,
                 'enforce_desiderata': 'enforce_desiderata' in form,
                 'prioritize_minimal_unassigned_shifts': 'prioritize_minimal_unassigned_shifts' in form,
                 'person_scoring': {
@@ -333,7 +333,11 @@ def process_schedule(request_data):
         
         # Generate schedule using main.py logic
         schedule = scheduler.generate_schedule(start_date, end_date)
-        
+
+        # Always verify constraints on the final schedule (even after multi_run)
+        print("\n🔍 Verifying constraints... (WEBAPP)")
+        constraint_results = scheduler.verify_constraints(start_date, end_date)
+
         with job_lock:
             job_status['progress'] = 'Exporting results...'
         
