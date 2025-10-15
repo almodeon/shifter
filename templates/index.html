@@ -698,7 +698,7 @@
         function setPreviousMonth() {
             const startInput = document.querySelector('input[name="start_date"]');
             const endInput = document.querySelector('input[name="end_date"]');
-            console.log("setPreviousMonth called");
+            // console.log("setPreviousMonth called");
 
             // If start is empty, fall back to today
             const startVal = startInput.value || (() => {
@@ -712,7 +712,7 @@
             const monthIndex = Number(mStr) - 1; // 0-based
             const day = Number(dStr);
 
-            console.log("Parsed start date:", year, monthIndex, day);
+            // console.log("Parsed start date:", year, monthIndex, day);
 
             // Compute previous month (monthIndexPrev in 0..11)
             const prevMonthIndex = (monthIndex + 11) % 12;
@@ -730,8 +730,8 @@
                 return `${Y}-${M}-${D}`;
             };
 
-            console.log("First day of previous month:", fmt(firstDayPrev));
-            console.log("Last day of previous month:", fmt(lastDayPrev));
+            // console.log("First day of previous month:", fmt(firstDayPrev));
+            // console.log("Last day of previous month:", fmt(lastDayPrev));
 
             startInput.value = fmt(firstDayPrev);
             endInput.value = fmt(lastDayPrev);
@@ -740,7 +740,7 @@
         function setNextMonth() {
             const startInput = document.querySelector('input[name="start_date"]');
             const endInput = document.querySelector('input[name="end_date"]');
-            console.log("setNextMonth called");
+            // console.log("setNextMonth called");
 
             // If start is empty, fall back to today
             const startVal = startInput.value || (() => {
@@ -754,7 +754,7 @@
             const monthIndex = Number(mStr) - 1; // 0-based
             const day = Number(dStr);
 
-            console.log("Parsed start date:", year, monthIndex, day);
+            // console.log("Parsed start date:", year, monthIndex, day);
 
             // Compute next month (monthIndexNext in 0..11)
             const nextMonthIndex = (monthIndex + 1) % 12;
@@ -772,8 +772,8 @@
                 return `${Y}-${M}-${D}`;
             };
 
-            console.log("First day of next month:", fmt(firstDayNextMonth));
-            console.log("Last day of next month:", fmt(lastDayNextMonth));
+            // console.log("First day of next month:", fmt(firstDayNextMonth));
+            // console.log("Last day of next month:", fmt(lastDayNextMonth));
 
             startInput.value = fmt(firstDayNextMonth);
             endInput.value = fmt(lastDayNextMonth);

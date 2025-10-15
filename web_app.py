@@ -332,7 +332,11 @@ def process_schedule(request_data):
             job_status['progress'] = 'Generating schedule...'
         
         # Generate schedule using main.py logic
-        schedule = scheduler.generate_schedule(start_date, end_date)
+        def progress_callback(current, total):
+            with job_lock:
+                job_status['progress'] = f"Multi-run progress: {current}/{total}"
+        
+        schedule = scheduler.generate_schedule(start_date, end_date, progress_callback=progress_callback)
 
         # Always verify constraints on the final schedule (even after multi_run)
         print("\n🔍 Verifying constraints... (WEBAPP)")

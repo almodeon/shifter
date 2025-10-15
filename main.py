@@ -125,14 +125,14 @@ class HospitalScheduler:
         """Print configuration summary"""
         self.config.print_summary()
 
-    def generate_schedule(self, start_date, end_date):
+    def generate_schedule(self, start_date, end_date, progress_callback=None):
         """Generate schedule for the given date range with optional multi-run optimization"""
         if self.settings['multi_run']['enabled']:
-            return self._generate_schedule_multi_run(start_date, end_date)
+            return self._generate_schedule_multi_run(start_date, end_date, progress_callback=progress_callback)
         else:
             return self._generate_schedule_single(start_date, end_date)
     
-    def _generate_schedule_multi_run(self, start_date, end_date):
+    def _generate_schedule_multi_run(self, start_date, end_date, progress_callback=None):
         """Generate schedule using multi-run optimization"""
         self.logger.log('multi_run_optimization', 'info', "=== MULTI-RUN OPTIMIZATION ===")
         self.logger.log('multi_run_optimization', 'info', f"Running up to {self.settings['multi_run']['max_runs']} attempts to find the best schedule...")
@@ -380,6 +380,10 @@ class HospitalScheduler:
             except Exception as e:
                 self.logger.log('multi_run_optimization', 'error', f"  ❌ Run failed with exception: {e}")
                 continue
+
+            if progress_callback:
+                progress_callback(run_id + 1, max_runs)
+        
             run_id += 1
         
         # Clear progress bar line
