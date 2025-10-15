@@ -463,6 +463,7 @@ class ConstraintRulesEngine:
             if constraint.enabled:
                 try:
                     result = constraint.evaluate(self.scheduler, start_date, end_date)
+                    # print(f"Evaluated constraint {constraint_id}: {result}\nViolations:{result.violations}\n")
                     results[constraint_id] = result
                 except Exception as e:
                     results[constraint_id] = ConstraintResult(

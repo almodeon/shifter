@@ -227,7 +227,7 @@ class HospitalScheduler:
                         continue  # Skip this run and try the next one
                 
                 # Verify constraints
-                constraint_results = self.verify_constraints(start_date, end_date)
+                constraint_results, _ = self.verify_constraints(start_date, end_date)
                 
                 # Count passed constraints
                 passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
@@ -291,7 +291,6 @@ class HospitalScheduler:
 
                 # Defensive: ensure best_unassigned_count etc. are initialized
                 # (already initialized above, but keep for clarity)
-
                 if prioritize_minimal_unassigned:
                     if unassigned_count < best_unassigned_count:
                         is_better = True
@@ -759,10 +758,11 @@ class HospitalScheduler:
     
     def verify_constraints(self, start_date, end_date):
         """Comprehensive constraint verification - delegates to ConstraintVerifier class"""
-        constraint_results = self.constraint_verifier.verify_constraints(start_date, end_date)
+        constraint_results, constraint_violations = self.constraint_verifier.verify_constraints(start_date, end_date)
         # Store results for potential export
         self.last_constraint_results = constraint_results
-        return constraint_results
+        self.last_constraint_violations = constraint_violations
+        return constraint_results, constraint_violations
 
     def _check_desiderata_compliance(self, start_date, end_date):
         """Check if current schedule complies with desiderata (forbidden shifts and vacation)"""
@@ -1204,7 +1204,8 @@ def main(settings_overrides=None):
 
     # Always verify constraints on the final schedule (even after multi_run)
     print("\n🔍 Verifying constraints...")
-    constraint_results = scheduler.verify_constraints(start_date, end_date)
+    constraint_results, constraint_violations = scheduler.verify_constraints(start_date, end_date)
+    # print(f"Violations: {constraint_violations}")
     
     # Print to console
     scheduler.print_schedule()
@@ -1232,16 +1233,14 @@ def main(settings_overrides=None):
 
     # Export to docx report
     try:
-        from doc_creator import ScheduleDocxCreator
-        docx_creator = ScheduleDocxCreator(
-            json_path="output/schedule_output.json",
-            doc_path="output/schedule_output.docx"
-            # Optionally add more settings here if needed
-        )
-        docx_creator.create_doc(config.get('docx_output'))
-        print("✅ DOCX exported to output/schedule_output.docx")
+        scheduler.export_manager.export_schedule_docx(
+            docx_file='output/schedule_output.docx', 
+            json_file='output/schedule_output.json',
+            constraint_violations=constraint_violations
+            )
+        print("✅ DOCX exported to output/schedule_output.docx (NEW METHOD)")
     except Exception as e:
-        print(f"❌ DOCX export failed: {e}")
+        print(f"❌ DOCX export (NEW METHOD) failed: {e}")
 
 if __name__ == "__main__":
     overrides = {
@@ -1265,14 +1264,14 @@ if __name__ == "__main__":
             'data_loading': 'error',              
             'settings_display': 'error',
             'multi_run_optimization': 'error',
-            'night_shift_assignment': 'debug',
+            'night_shift_assignment': 'error',
             'workload_balancing': 'error',
             'weekend_shift_balancing': 'error',
             'fill_up_minimum_hours': 'error',
-            'shift_assignment_warnings': 'debug',
-            'shift_assignment_debug': 'debug',
+            'shift_assignment_warnings': 'error',
+            'shift_assignment_debug': 'error',
             'afternoon_balancing': 'error',
-            'constraint_verification': 'info',
+            'constraint_verification': 'error',
             'schedule_display': 'error',
             'summary_statistics': 'error',
             'export_notifications': 'error'

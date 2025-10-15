@@ -19,11 +19,13 @@ class ConstraintVerifier:
         
         # Convert results to the old format for compatibility
         constraint_status = {}
-        
+        constraint_violations = {}
+
         for constraint_id, result in results.items():
             status = 'PASS' if result.passed else 'FAIL'
             constraint_status[constraint_id] = status
-            
+            constraint_violations[constraint_id] = result.violations
+
             # Log result
             level = 'info' if result.passed else 'error'
             self.logger.log('constraint_verification', level, f"{result.name}: {status}")
@@ -35,7 +37,7 @@ class ConstraintVerifier:
         # Print summary
         self._print_summary(results)
         
-        return constraint_status
+        return constraint_status, constraint_violations
     
     def verify_constraint_group(self, group_name: str, start_date, end_date):
         """Verify constraints in a specific group"""

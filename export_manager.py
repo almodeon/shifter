@@ -934,7 +934,7 @@ class ExportManager:
                                     f"❌ Failed to export assignment debug: {e}")
             self.output_files['debug'] = None
 
-    def export_schedule_docx(self, docx_file=None, json_file=None):
+    def export_schedule_docx(self, docx_file=None, json_file=None, constraint_violations=None):
         """
         Export the schedule to a DOCX file using ScheduleDocxCreator.
         Saves the DOCX filename in self.output_files['docx'].
@@ -957,7 +957,7 @@ class ExportManager:
                 doc_path=docx_file
                 # Optionally add more settings here if needed
             )
-            creator.create_doc()
+            creator.create_doc(settings=self.scheduler.settings, constraint_violations=constraint_violations)
             self.logger.log('export_notifications', 'info', f"DOCX exported to {docx_file}")
             self.output_files['docx'] = docx_file  # Save for later collection
         except Exception as e:

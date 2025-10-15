@@ -144,10 +144,7 @@ class ConfigManager:
             'docx_output': {
                 'enabled': True, # NOT USED YET
                 'output_path': 'output/schedule.docx', # NOT USED YET
-                'show_violations': {
-                    'understaffed_shifts': True,
-                    'person_at_home': True,
-                }
+                'show_violations': True
             },
             'csv_output': {
                 'enabled': True, # NOT USED YET

@@ -321,8 +321,8 @@ def process_schedule(request_data):
         schedule = scheduler.generate_schedule(start_date, end_date, progress_callback=progress_callback)
 
         # Always verify constraints on the final schedule (even after multi_run)
-        constraint_results = scheduler.verify_constraints(start_date, end_date)
-
+        constraint_results, constraint_violations = scheduler.verify_constraints(start_date, end_date)
+        
         with job_lock:
             job_status['progress'] = 'Exporting results...'
         
@@ -339,27 +339,31 @@ def process_schedule(request_data):
         json_file = f'schedule_{timestamp}.json'
         docx_file = f'schedule_{timestamp}.docx'
         multi_run_ranking_file = f'multi_run_ranking_{timestamp}.csv'
+        schedule_filepath = os.path.join(output_dir, schedule_file)
+        stats_filepath = os.path.join(output_dir, stats_file)
+        json_filepath = os.path.join(output_dir, json_file)
+        docx_filepath = os.path.join(output_dir, docx_file)
+        multi_run_ranking_filepath = os.path.join(output_dir, multi_run_ranking_file)
 
         # print(f"Exporting schedule to {os.path.join(output_dir, schedule_file)}")
-        scheduler.export_to_csv(os.path.join(output_dir, schedule_file), start_date, end_date)
+        scheduler.export_to_csv(schedule_filepath, start_date, end_date)
         # print(f"Exporting staff statistics to {os.path.join(output_dir, stats_file)}")
-        scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
+        scheduler.export_staff_statistics_to_csv(start_date, end_date, stats_filepath)
         # print(f"Exporting multi-run ranking to {os.path.join(output_dir, multi_run_ranking_file)}")
-        scheduler.export_multi_run_ranking(os.path.join(output_dir, multi_run_ranking_file))
+        scheduler.export_multi_run_ranking(multi_run_ranking_filepath)
         # Export JSON for DOCX generation
-        scheduler.export_manager.export_schedule_json(os.path.join(output_dir, json_file))
+        scheduler.export_manager.export_schedule_json(json_filepath)
         # Save all data to the specified output folder
         output_folder = 'history'  # Define your output folder name
         scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
 
         # Generate DOCX using doc_creator
         try:
-            from doc_creator import ScheduleDocxCreator
-            docx_creator = ScheduleDocxCreator(
-                json_path=os.path.join(output_dir, json_file),
-                doc_path=os.path.join(output_dir, docx_file)
-            )
-            docx_creator.create_doc()
+            scheduler.export_manager.export_schedule_docx(
+                docx_file=docx_filepath, 
+                json_file=json_filepath,
+                constraint_violations=constraint_violations
+                )
             docx_success = True
         except Exception as e:
             docx_success = False
@@ -412,15 +416,15 @@ def process_schedule(request_data):
         staff_totals['avg_hours_per_week'] = sum(person['avg_hours_per_week'] for person in staff_statistics) / total_people if total_people > 0 else 0
         
         # Verify constraints to get summary
-        constraint_results = scheduler.verify_constraints(start_date, end_date)
+        constraint_results_dict, _ = scheduler.verify_constraints(start_date, end_date)
         
-        passed_count = sum(1 for status in constraint_results.values() if status == 'PASS')
-        total_constraints = len(constraint_results)
+        passed_count = sum(1 for status in constraint_results_dict.values() if status == 'PASS')
+        total_constraints = len(constraint_results_dict)
         failed_count = total_constraints - passed_count
         
         # Format constraint results for display
         constraint_details = []
-        for constraint_name, status in constraint_results.items():
+        for constraint_name, status in constraint_results_dict.items():
             icon = "✅" if status == 'PASS' else "❌"
             # Clean up constraint name for display
             display_name = constraint_name.replace('_', ' ').title()

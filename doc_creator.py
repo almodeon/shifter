@@ -225,17 +225,35 @@ class ScheduleDocxCreator:
                 labels.append(label)
             return f"{int(day)} ({'/'.join(labels)})"
 
-    def create_doc(self, settings=None):
+    def create_doc(self, settings=None, constraint_violations=None):
         # --- LOAD JSON AND PARSE SCHEDULE ---
         with open(self.json_path, encoding="utf-8") as f:
             data = json.load(f)
 
         schedule = data["schedule"]
+        violations = constraint_violations or {}
         people_ids = sorted(schedule.keys())
         all_dates = set()
         for person_sched in schedule.values():
             all_dates.update(person_sched.keys())
         all_dates = sorted(all_dates)
+
+        # Load violations if present and setting enabled
+        show_violations = False
+        violations_by_date = {}
+        if settings and settings.get("docx_output", {}).get("show_violations"):
+            show_violations = True
+            # Map violations to dates for quick lookup
+            import re
+            for vlist in violations.values():
+                for v in vlist:
+                    # Try to extract date from violation string (format: 'YYYY-MM-DD:' or 'on YYYY-MM-DD')
+                    m = re.search(r'(\d{4}-\d{2}-\d{2})', v)
+                    if m:
+                        vdate = m.group(1)
+                        if vdate not in violations_by_date:
+                            violations_by_date[vdate] = []
+                        violations_by_date[vdate].append(v)
 
         # --- AUTOMATIC TITLE FROM DATE RANGE (ITALIAN) ---
         MONTH_NAME_IT = [
@@ -358,15 +376,15 @@ class ScheduleDocxCreator:
                     for run in paragraph.runs:
                         run.font.name = self.font_name
                 tr[i].width = Inches(self.column_widths[i])
-            # Compose ASSENZE cell with color for MONTO/SMONTO NOTTE
+            # Compose ASSENZE cell with color for MONTO/SMONTO NOTTE and violations
             assenze_cell = tr[-1]
             p = assenze_cell.paragraphs[0]
+            # Write MONTO/SMONTO NOTTE/vacation as before
             for idx2, (pid, label) in enumerate(assenze_labels):
                 if idx2 > 0:
                     p.add_run(", ")
                 if label:
                     run = p.add_run(f"{pid} ({label})")
-                    # Colorize MONTO/SMONTO NOTTE
                     run.font.color.rgb = RGBColor(
                         int(self.night_shift_color[0:2], 16),
                         int(self.night_shift_color[2:4], 16),
@@ -374,6 +392,16 @@ class ScheduleDocxCreator:
                     )
                 else:
                     p.add_run(str(pid))
+            # Add violations for this date if enabled
+            if show_violations and date_str in violations_by_date:
+                if assenze_labels:
+                    p.add_run("; ")
+                for idxv, v in enumerate(violations_by_date[date_str]):
+                    if idxv > 0:
+                        p.add_run(" | ")
+                    run = p.add_run(v)
+                    run.font.color.rgb = RGBColor(0xC6, 0x1A, 0x09)  # dark red for violations
+
             assenze_cell.width = Inches(self.column_widths[-1])
             if is_weekend:
                 self.set_row_bg_color(table.rows[-1], self.weekend_color)
