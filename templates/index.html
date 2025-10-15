@@ -246,7 +246,7 @@
                         <input type="date" name="end_date" value="{{ default_end }}" required placeholder="End Date">
                     </div>
                     <div class="quick-dates">
-                        <button type="button" class="quick-date-btn" onclick="setThisMonth()">This Month</button>
+                        <button type="button" class="quick-date-btn" onclick="setPreviousMonth()">Previous Month</button>
                         <button type="button" class="quick-date-btn" onclick="setNextMonth()">Next Month</button>
                     </div>
                 </div>
@@ -695,22 +695,88 @@
             }
         });
         
-        function setThisMonth() {
-            const now = new Date();
-            const start = new Date(now.getFullYear(), now.getMonth(), 1);
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            
-            document.querySelector('input[name="start_date"]').value = start.toISOString().split('T')[0];
-            document.querySelector('input[name="end_date"]').value = end.toISOString().split('T')[0];
+        function setPreviousMonth() {
+            const startInput = document.querySelector('input[name="start_date"]');
+            const endInput = document.querySelector('input[name="end_date"]');
+            console.log("setPreviousMonth called");
+
+            // If start is empty, fall back to today
+            const startVal = startInput.value || (() => {
+                const t = new Date();
+                return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+            })();
+
+            // Parse YYYY-MM-DD without using Date(string) to avoid TZ issues
+            const [yStr, mStr, dStr] = startVal.split('-');
+            const year = Number(yStr);
+            const monthIndex = Number(mStr) - 1; // 0-based
+            const day = Number(dStr);
+
+            console.log("Parsed start date:", year, monthIndex, day);
+
+            // Compute previous month (monthIndexPrev in 0..11)
+            const prevMonthIndex = (monthIndex + 11) % 12;
+            const prevMonthYear = monthIndex === 0 ? year - 1 : year;
+
+            // First and last day of previous month (using Date with numeric args is local-time safe)
+            const firstDayPrev = new Date(prevMonthYear, prevMonthIndex, 1);
+            const lastDayPrev = new Date(prevMonthYear, prevMonthIndex + 1, 0); // day 0 = last day previous month
+
+            // Format helper (local values)
+            const fmt = (date) => {
+                const Y = date.getFullYear();
+                const M = String(date.getMonth() + 1).padStart(2, '0');
+                const D = String(date.getDate()).padStart(2, '0');
+                return `${Y}-${M}-${D}`;
+            };
+
+            console.log("First day of previous month:", fmt(firstDayPrev));
+            console.log("Last day of previous month:", fmt(lastDayPrev));
+
+            startInput.value = fmt(firstDayPrev);
+            endInput.value = fmt(lastDayPrev);
         }
-        
+
         function setNextMonth() {
-            const now = new Date();
-            const start = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-            const end = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-            
-            document.querySelector('input[name="start_date"]').value = start.toISOString().split('T')[0];
-            document.querySelector('input[name="end_date"]').value = end.toISOString().split('T')[0];
+            const startInput = document.querySelector('input[name="start_date"]');
+            const endInput = document.querySelector('input[name="end_date"]');
+            console.log("setNextMonth called");
+
+            // If start is empty, fall back to today
+            const startVal = startInput.value || (() => {
+                const t = new Date();
+                return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+            })();
+
+            // Parse YYYY-MM-DD without using Date(string) to avoid TZ issues
+            const [yStr, mStr, dStr] = startVal.split('-');
+            const year = Number(yStr);
+            const monthIndex = Number(mStr) - 1; // 0-based
+            const day = Number(dStr);
+
+            console.log("Parsed start date:", year, monthIndex, day);
+
+            // Compute next month (monthIndexNext in 0..11)
+            const nextMonthIndex = (monthIndex + 1) % 12;
+            const nextMonthYear = nextMonthIndex === 0 ? year + 1 : year;
+
+            // First and last day of next month (using Date with numeric args is local-time safe)
+            const firstDayNextMonth = new Date(nextMonthYear, nextMonthIndex, 1);
+            const lastDayNextMonth = new Date(nextMonthYear, nextMonthIndex + 1, 0); // day 0 = last day next month
+
+            // Format helper (local values)
+            const fmt = (date) => {
+                const Y = date.getFullYear();
+                const M = String(date.getMonth() + 1).padStart(2, '0');
+                const D = String(date.getDate()).padStart(2, '0');
+                return `${Y}-${M}-${D}`;
+            };
+
+            console.log("First day of next month:", fmt(firstDayNextMonth));
+            console.log("Last day of next month:", fmt(lastDayNextMonth));
+
+            startInput.value = fmt(firstDayNextMonth);
+            endInput.value = fmt(lastDayNextMonth);
         }
         
         document.getElementById('schedulerForm').onsubmit = function(e) {
