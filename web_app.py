@@ -255,6 +255,7 @@ def process_schedule(request_data):
                 'show_progress_bar': False,
                 'enforce_desiderata': 'enforce_desiderata' in form,
                 'prioritize_minimal_unassigned_shifts': 'prioritize_minimal_unassigned_shifts' in form,
+                'prioritize_minimal_days_off': 'prioritize_minimal_days_off' in form,
                 'person_scoring': {
                     'enabled': 'person_scoring_enabled' in form,
                     'night_score_coeff': float(form.get('night_score_coeff', 2.0)),

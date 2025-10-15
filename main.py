@@ -299,18 +299,35 @@ class HospitalScheduler:
                 is_better = False
 
                 # Defensive: ensure best_unassigned_count etc. are initialized
-                # (already initialized above, but keep for clarity)
-                if prioritize_minimal_unassigned:
+                if prioritize_minimal_unassigned and prioritize_minimal_days_off:
+                    # Prioritize: unassigned -> days_off -> passed -> warnings -> hour_diff -> discrimination
+                    if unassigned_count < best_unassigned_count:
+                        is_better = True
+                    elif unassigned_count == best_unassigned_count:
+                        if days_off_count < best_days_off_count:
+                            is_better = True
+                        elif days_off_count == best_days_off_count:
+                            if passed_count > best_passed_count:
+                                is_better = True
+                            elif passed_count == best_passed_count:
+                                best_warnings_len = len(best_warnings) if 'best_warnings' in locals() else float('inf')
+                                if warning_count < best_warnings_len:
+                                    is_better = True
+                                elif warning_count == best_warnings_len:
+                                    if hour_difference < best_hour_difference:
+                                        is_better = True
+                                    elif hour_difference == best_hour_difference and scoring_enabled:
+                                        if discrimination_score < best_discrimination_score:
+                                            is_better = True
+                elif prioritize_minimal_unassigned:
+                    # Prioritize: unassigned -> passed -> warnings -> hour_diff -> discrimination
                     if unassigned_count < best_unassigned_count:
                         is_better = True
                     elif unassigned_count == best_unassigned_count:
                         if passed_count > best_passed_count:
                             is_better = True
                         elif passed_count == best_passed_count:
-                            if 'best_warnings' in locals():
-                                best_warnings_len = len(best_warnings)
-                            else:
-                                best_warnings_len = float('inf')
+                            best_warnings_len = len(best_warnings) if 'best_warnings' in locals() else float('inf')
                             if warning_count < best_warnings_len:
                                 is_better = True
                             elif warning_count == best_warnings_len:
@@ -319,25 +336,46 @@ class HospitalScheduler:
                                 elif hour_difference == best_hour_difference and scoring_enabled:
                                     if discrimination_score < best_discrimination_score:
                                         is_better = True
+                elif prioritize_minimal_days_off:
+                    # Prioritize: days_off -> passed -> warnings -> unassigned -> hour_diff -> discrimination
+                    if days_off_count < best_days_off_count:
+                        is_better = True
+                    elif days_off_count == best_days_off_count:
+                        if passed_count > best_passed_count:
+                            is_better = True
+                        elif passed_count == best_passed_count:
+                            best_warnings_len = len(best_warnings) if 'best_warnings' in locals() else float('inf')
+                            if warning_count < best_warnings_len:
+                                is_better = True
+                            elif warning_count == best_warnings_len:
+                                if unassigned_count < best_unassigned_count:
+                                    is_better = True
+                                elif unassigned_count == best_unassigned_count:
+                                    if hour_difference < best_hour_difference:
+                                        is_better = True
+                                    elif hour_difference == best_hour_difference and scoring_enabled:
+                                        if discrimination_score < best_discrimination_score:
+                                            is_better = True
                 else:
+                    # Prioritize: passed -> warnings -> unassigned -> days_off -> hour_diff -> discrimination
                     if passed_count > best_passed_count:
                         is_better = True
                     elif passed_count == best_passed_count:
-                        if 'best_warnings' in locals():
-                            best_warnings_len = len(best_warnings)
-                        else:
-                            best_warnings_len = float('inf')
+                        best_warnings_len = len(best_warnings) if 'best_warnings' in locals() else float('inf')
                         if warning_count < best_warnings_len:
                             is_better = True
                         elif warning_count == best_warnings_len:
                             if unassigned_count < best_unassigned_count:
                                 is_better = True
                             elif unassigned_count == best_unassigned_count:
-                                if hour_difference < best_hour_difference:
+                                if days_off_count < best_days_off_count:
                                     is_better = True
-                                elif hour_difference == best_hour_difference and scoring_enabled:
-                                    if discrimination_score < best_discrimination_score:
+                                elif days_off_count == best_days_off_count:
+                                    if hour_difference < best_hour_difference:
                                         is_better = True
+                                    elif hour_difference == best_hour_difference and scoring_enabled:
+                                        if discrimination_score < best_discrimination_score:
+                                            is_better = True
 
                 if is_better:
                     best_passed_count = passed_count
@@ -349,7 +387,7 @@ class HospitalScheduler:
                     best_discrimination_score = discrimination_score
                     best_warnings = self.warnings.copy()
                     best_shift_counts = self.shift_counts.copy()
-                    self.logger.log('multi_run_optimization', 'info', f"  🎯 New best result!")
+                    # self.logger.log('multi_run_optimization', 'info', f"  🎯 New best result!")
                 
                 # Update progress bar
                 if show_progress:

@@ -543,7 +543,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label title="Number of schedule generation attempts (more runs = better results but longer time)">Maximum Runs:</label>
-                                    <input type="number" name="max_runs" value="5000" min="1000" max="20000">
+                                    <input type="number" name="max_runs" value="1000" min="1000" max="20000">
                                 </div>
                                 <div class="form-group">
                                     <label title="Only consider schedules that strictly follow forbidden shifts and vacation constraints">
@@ -555,6 +555,12 @@
                                     <label title="Prioritize solutions with the fewest unassigned shifts over other metrics">
                                         <input type="checkbox" name="prioritize_minimal_unassigned_shifts" checked>
                                         <span class="checkbox-label">Prioritize Minimal Unassigned</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label title="Prioritize solutions with the fewest days off over other metrics">
+                                        <input type="checkbox" name="prioritize_minimal_days_off" checked>
+                                        <span class="checkbox-label">Prioritize Minimal Days Off</span>
                                     </label>
                                 </div>
                                 <div class="form-group">
