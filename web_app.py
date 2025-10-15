@@ -68,24 +68,6 @@ def index():
         import calendar
         last_day = calendar.monthrange(next_year, next_month)[1]
         default_end = f"{next_year}-{next_month:02d}-{last_day:02d}"
-
-        
-        # Next month code (commented out):
-        # # Calculate next month
-        # if now.month == 12:
-        #     next_month = 1
-        #     next_year = now.year + 1
-        # else:
-        #     next_month = now.month + 1
-        #     next_year = now.year
-        # 
-        # # First day of next month
-        # default_start = f"{next_year}-{next_month:02d}-01"
-        # 
-        # # Last day of next month
-        # import calendar
-        # last_day = calendar.monthrange(next_year, next_month)[1]
-        # default_end = f"{next_year}-{next_month:02d}-{last_day:02d}"
         
         return render_template('index.html', 
                              default_start=default_start, 
@@ -362,6 +344,9 @@ def process_schedule(request_data):
         scheduler.export_staff_statistics_to_csv(start_date, end_date, os.path.join(output_dir, stats_file))
         # Export JSON for DOCX generation
         scheduler.export_manager.export_schedule_json(os.path.join(output_dir, json_file))
+        # Save all data to the specified output folder
+        output_folder = 'history'  # Define your output folder name
+        scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
 
         # Generate DOCX using doc_creator
         try:
