@@ -250,9 +250,9 @@ def process_schedule(request_data):
             # Multi-run settings (all exposed in web form)
             'multi_run': {
                 'enabled': 'multi_run_enabled' in form,
-                'max_runs': int(form.get('max_runs', 1000)),
+                'max_runs': int(form.get('max_runs', 5000)),
                 'silence_output': True,
-                'show_progress_bar': True,
+                'show_progress_bar': False,
                 'enforce_desiderata': 'enforce_desiderata' in form,
                 'prioritize_minimal_unassigned_shifts': 'prioritize_minimal_unassigned_shifts' in form,
                 'person_scoring': {
@@ -353,10 +353,6 @@ def process_schedule(request_data):
         scheduler.export_multi_run_ranking(multi_run_ranking_filepath)
         # Export JSON for DOCX generation
         scheduler.export_manager.export_schedule_json(json_filepath)
-        # Save all data to the specified output folder
-        output_folder = 'history'  # Define your output folder name
-        scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
-
         # Generate DOCX using doc_creator
         try:
             scheduler.export_manager.export_schedule_docx(
@@ -368,6 +364,10 @@ def process_schedule(request_data):
         except Exception as e:
             docx_success = False
             docx_error = str(e)
+        # Save all data to the specified output folder
+        output_folder = 'history'  # Define your output folder name
+        scheduler.export_manager.save_all_data(output_folder)  # Call save_all_data method
+
 
         # Get staff statistics for detailed results panel using existing export manager method
         staff_data = scheduler.export_manager._get_staff_statistics_data(start_date, end_date)

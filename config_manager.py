@@ -86,6 +86,7 @@ class ConfigManager:
                 'show_progress_bar': True,
                 'enforce_desiderata': True,
                 'prioritize_minimal_unassigned_shifts': True,
+                'prioritize_minimal_days_off': True,
                 'person_scoring': {
                     'enabled': True,
                     'night_score_coeff': 2.0,

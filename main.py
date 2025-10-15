@@ -139,18 +139,22 @@ class HospitalScheduler:
         self.logger.log('multi_run_optimization', 'info', f"Running up to {self.settings['multi_run']['max_runs']} attempts to find the best schedule...")
         
         # Check if desiderata enforcement is enabled
-        enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', False)
-        prioritize_minimal_unassigned = self.settings['multi_run'].get('prioritize_minimal_unassigned_shifts', False)
-        scoring_enabled = self.settings['multi_run'].get('person_scoring', {}).get('enabled', False)
+        enforce_desiderata = self.settings['multi_run'].get('enforce_desiderata', True)
+        prioritize_minimal_unassigned = self.settings['multi_run'].get('prioritize_minimal_unassigned_shifts', True)
+        prioritize_minimal_days_off = self.settings['multi_run'].get('prioritize_minimal_days_off', True)
+        scoring_enabled = self.settings['multi_run'].get('person_scoring', {}).get('enabled', True)
         only_consider_best_passes = self.settings['multi_run'].get('only_consider_best_passes', True)
         target_best_pass_runs = self.settings['multi_run'].get('target_best_pass_runs', 100)
-        accumulate_best_pass_runs = self.settings['multi_run'].get('accumulate_best_pass_runs', False)
+        accumulate_best_pass_runs = self.settings['multi_run'].get('accumulate_best_pass_runs', True)
         
         if enforce_desiderata:
             self.logger.log('multi_run_optimization', 'info', "Desiderata enforcement: ENABLED - only compliant runs will be considered")
         
         if prioritize_minimal_unassigned:
             self.logger.log('multi_run_optimization', 'info', "Minimal unassigned shifts: ENABLED - prioritizing solutions with fewest unassigned shifts")
+
+        if prioritize_minimal_days_off:
+            self.logger.log('multi_run_optimization', 'info', "Minimal days off: ENABLED - prioritizing solutions with fewest days off")
         
         if scoring_enabled:
             scoring_settings = self.settings['multi_run']['person_scoring']
@@ -163,6 +167,7 @@ class HospitalScheduler:
         best_constraint_results = None
         best_passed_count = -1
         best_unassigned_count = float('inf')  # <-- ensure initialized
+        best_days_off_count = float('inf')  # <-- ensure initialized
         best_hour_difference = float('inf')   # <-- ensure initialized
         best_discrimination_score = float('inf')  # <-- ensure initialized
         all_runs = []
@@ -251,14 +256,17 @@ class HospitalScheduler:
                 
                 # Calculate unassigned shifts count
                 unassigned_count = self.calculate_total_unassigned_shifts(start_date, end_date)
-                
+
+                # Calculate days off count if prioritizing minimal days off
+                days_off_count = self.calculate_total_days_off(start_date, end_date)
+
                 # Calculate discrimination score for this solution
                 discrimination_score = self.calculate_solution_discrimination_score(schedule, self.shift_counts)
                 
                 self.logger.log('multi_run_optimization', 'debug', 
                     f"  Result: {passed_count}/{total_constraints} constraints passed, "
                     f"{failed_count} failed, {warning_count} warnings, "
-                    f"{unassigned_count} unassigned, {hour_difference}h difference, "
+                    f"{unassigned_count} unassigned, {days_off_count} days off, {hour_difference}h difference, "
                     f"discrimination_score={discrimination_score:.1f}")
                 
                 # Store run results with discrimination score
@@ -271,11 +279,12 @@ class HospitalScheduler:
                     'failed_count': failed_count,
                     'warning_count': warning_count,
                     'unassigned_count': unassigned_count,
+                    'days_off_count': days_off_count,
                     'hour_difference': hour_difference,
                     'discrimination_score': discrimination_score,  # NEW: Store discrimination score
                     'warnings': self.warnings.copy(),
                     'shift_counts': self.shift_counts.copy(),
-                    'success': passed_count == total_constraints and warning_count == 0 and unassigned_count == 0
+                    'success': passed_count == total_constraints and warning_count == 0 and unassigned_count == 0 and days_off_count == 0
                 }
                 all_runs.append(run_result)
 
@@ -333,6 +342,7 @@ class HospitalScheduler:
                 if is_better:
                     best_passed_count = passed_count
                     best_unassigned_count = unassigned_count
+                    best_days_off_count = days_off_count
                     best_schedule = schedule.copy()
                     best_constraint_results = constraint_results.copy()
                     best_hour_difference = hour_difference
@@ -898,6 +908,39 @@ class HospitalScheduler:
         
         return discrimination_score
 
+    def calculate_total_days_off(self, start_date, end_date):
+        """Calculate total number of days off (weekdays with no shift, not ferie, not tirocinio, not night rest) for all people"""
+        total_days_off = 0
+        all_dates = [start_date + timedelta(days=i) for i in range((end_date - start_date).days + 1)]
+        for person_id, person in self.people.items():
+            for date in all_dates:
+                if date.weekday() >= 5:
+                    continue  # skip weekends
+                assigned_shifts = self.schedule.get(person_id, {}).get(date, [])
+                # Check for ferie (vacation) day: all MPN forbidden
+                ferie = False
+                for forbidden in person.get('forbidden_shifts', []):
+                    if forbidden and forbidden['date'] == date and len(forbidden['shifts']) == 3:
+                        ferie = True
+                        break
+                # Check for tirocinio (internship) day
+                tirocinio = False
+                if 'tirocinio_dates' in person and date in person['tirocinio_dates']:
+                    # Only count tirocinio if not assigned to afternoon or mp
+                    if 'afternoon' not in assigned_shifts and 'mp' not in assigned_shifts:
+                        tirocinio = True
+                # Check for rest after night shift (night on previous day)
+                rest_after_night = False
+                prev_date = date - timedelta(days=1)
+                if prev_date >= start_date:
+                    prev_shifts = self.schedule.get(person_id, {}).get(prev_date, [])
+                    if 'night' in prev_shifts:
+                        rest_after_night = True
+                # If no shifts, not ferie, not tirocinio, not rest after night
+                if not assigned_shifts and not ferie and not tirocinio and not rest_after_night:
+                    total_days_off += 1
+        return total_days_off
+
 def merge_settings(base_settings, overrides):
     """Recursively merge override settings into base settings"""
     if not overrides:
@@ -1245,9 +1288,12 @@ def main(settings_overrides=None):
 if __name__ == "__main__":
     overrides = {
         'data_files': {
-            'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
-            'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
-            'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
+            'people_data_file': 'desiderata_NOV.xlsx',     # People/constraints data file with extension
+            'night_dates_file': 'notti_NOV.xlsx',          # Required night dates file with extension
+            'holiday_dates_file': 'festivi_NOV.xlsx',     # Holiday dates file with extension
+            # 'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
+            # 'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
+            # 'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
             # 'people_data_file': 'desiderata_empty.csv',     # People/constraints data file with extension
             # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
             # 'holiday_dates_file': 'festivi_empty.csv',     # Holiday dates file with extension
@@ -1255,7 +1301,7 @@ if __name__ == "__main__":
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
             'enabled': True,
-            'max_runs': 100,
+            'max_runs': 1000,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 100,
             'accumulate_best_pass_runs': True
