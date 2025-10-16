@@ -332,7 +332,7 @@ class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
 
                 if not assigned_shifts and not is_vacation and not is_tirocinio and not had_night_before:
                     violations.append(
-                        f"Person {person_id} has no shift on {d} (weekday, not holiday, not vacation/tirocinio/night-rest)"
+                        f"Person {person_id} has no shift on {d}"
                     )
 
         passed = len(violations) == 0
@@ -417,6 +417,13 @@ class ConstraintRulesEngine:
         
         # Always On Shift Weekdays constraint
         self.add_constraint(AlwaysOnShiftWeekdaysConstraint())
+
+        # ADD THIS: Night shift staffing constraint
+        self.add_constraint(StaffingConstraint(
+            'night_staff', 'night', settings['night_staff'],
+            days_filter=lambda d: d in self.scheduler.required_night_dates,
+            severity=ConstraintSeverity.CRITICAL
+        ))
 
     def add_constraint(self, constraint: BaseConstraint):
         """Add a constraint to the engine"""

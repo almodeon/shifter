@@ -982,6 +982,12 @@ class ShiftAssigner:
                 if my_nights >= max_nights:
                     return False, f"strict night balancing: already has max nights ({my_nights} >= {max_nights})"
             # else: all have equal, allow all to be eligible
+
+        if shift == 'night':
+            next_date = date + timedelta(days=1)
+            # Block night shift if the next day is a vacation day for this person
+            if 'vacation_dates' in person and next_date in person['vacation_dates']:
+                return False, "night shift not allowed before vacation day"
         
         # Check consecutive afternoon shift limit
         if shift == 'afternoon' and self.scheduler.settings['afternoon_balancing']['enabled']:

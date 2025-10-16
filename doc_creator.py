@@ -398,7 +398,7 @@ class ScheduleDocxCreator:
                     p.add_run("; ")
                 for idxv, v in enumerate(violations_by_date[date_str]):
                     if idxv > 0:
-                        p.add_run(" | ")
+                        p.add_run("\n")
                     run = p.add_run(v)
                     run.font.color.rgb = RGBColor(0xC6, 0x1A, 0x09)  # dark red for violations
 

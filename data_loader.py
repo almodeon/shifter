@@ -529,52 +529,37 @@ class DataLoader:
     def _parse_vacation_dates(self, vacation_str: str, log_level: str = 'info') -> List[Dict]:
         """Parse vacation dates string and convert to forbidden shifts. Supports ranges like '06/10/2025-17/10/2025'"""
         forbidden_shifts = []
-        
         try:
-            # Split by comma and parse each date or date range, strip spaces
             date_strings = [d.strip() for d in vacation_str.split(',') if d.strip()]
             for date_str in date_strings:
                 vacation_dates = []
-                
-                # Check if it's a date range (contains hyphen)
                 if '-' in date_str:
                     start_date_str, end_date_str = [s.strip() for s in date_str.split('-', 1)]
                     start_date = self._parse_date(start_date_str)
                     end_date = self._parse_date(end_date_str)
-                    
                     if start_date and end_date:
-                        # Generate all dates in the range
                         current_date = start_date
                         while current_date <= end_date:
                             vacation_dates.append(current_date)
                             current_date += timedelta(days=1)
                 else:
-                    # Single date
                     vacation_date = self._parse_date(date_str.strip())
                     if vacation_date:
                         vacation_dates.append(vacation_date)
-                
-                # Process each vacation date
                 for vacation_date in vacation_dates:
                     # 1. Forbid all shifts (MPN) on the vacation day itself
                     forbidden_shifts.append({
                         'date': vacation_date,
                         'shifts': ['morning', 'afternoon', 'night']
                     })
-                    
-                    # 2. Forbid night shift on the day BEFORE vacation
-                    day_before = vacation_date - timedelta(days=1)
-                    forbidden_shifts.append({
-                        'date': day_before,
-                        'shifts': ['night']
-                    })
-                    
-                    if log_level in ['debug']:
-                        self._log('debug', f"  Vacation {vacation_date}: blocked MPN on {vacation_date}, blocked N on {day_before}")
-                        
+                    # REMOVE this block:
+                    # day_before = vacation_date - timedelta(days=1)
+                    # forbidden_shifts.append({
+                    #     'date': day_before,
+                    #     'shifts': ['night']
+                    # })
         except Exception as e:
             self._log('error', f"Error parsing vacation dates '{vacation_str}': {e}")
-        
         return forbidden_shifts
     
     def _create_test_data(self) -> Dict[str, Any]:
