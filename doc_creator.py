@@ -1,6 +1,6 @@
 import json
 from docx import Document
-from datetime import datetime
+from datetime import datetime, timedelta
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from calendar import month_name
@@ -22,7 +22,7 @@ class ScheduleDocxCreator:
         night_shift_labels=None,
         hide_vacation_desiderata=True,
         show_vacations_on_holidays=False,
-        extend_weekend_desiderata_to_sunday=True,
+        extend_weekend_desiderata_to_sunday=False,
         night_shift_color="00AA00",  # color for MONTO/SMONTO NOTTE (default green)
         compact_desiderata_in_richieste_table=False,  # NEW: control desiderata format in richieste table
         show_violations=True,
@@ -81,6 +81,7 @@ class ScheduleDocxCreator:
         self.compact_desiderata_in_richieste_table = compact_desiderata_in_richieste_table
         self.show_violations = show_violations
         self.show_violation_types = show_violation_types
+        self.extend_weekend_desiderata_to_sunday = extend_weekend_desiderata_to_sunday
 
     def set_row_bg_color(self, row, color_hex):
         for cell in row.cells:
@@ -128,6 +129,17 @@ class ScheduleDocxCreator:
                             code = self.FORBIDDEN_SHIFT_CODES.get(s)
                             if code:
                                 result.append(f"{pid} ({code})")
+                # EXTEND NO WEEKEND TO SUNDAY IF ENABLED
+                if self.extend_weekend_desiderata_to_sunday:
+                    # If entry is NO WEEKEND and date_str is Sunday, check if Saturday has NO WEEKEND for this pid
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    if dt.weekday() == 6:  # Sunday
+                        prev_day = dt - timedelta(days=1)
+                        prev_day_str = prev_day.strftime("%Y-%m-%d")
+                        for prev_entry in desiderata.get(pid, []):
+                            if prev_entry["date"] == prev_day_str and "weekend" in prev_entry.get("shifts", []):
+                                result.append(f"{pid} (NO WEEKEND)")
+                                break
         return ", ".join(result)
 
     def get_internships(self, date_str, tirocinio, people_ids):

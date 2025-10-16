@@ -1043,13 +1043,12 @@ class ShiftAssigner:
                     return False, f"{shift} shift forbidden on {date}"
         
         # Check forbidden weekends
-        if date.weekday() >= 5:  # Weekend
-            for forbidden_weekend in person['forbidden_weekends']:
-                if forbidden_weekend:
-                    # Check if this weekend (Saturday or Sunday) is forbidden
-                    weekend_start = date - timedelta(days=date.weekday() - 5)  # Get Saturday
-                    if abs((weekend_start - forbidden_weekend).days) <= 1:
-                        return False, f"weekend work forbidden (forbidden weekend: {forbidden_weekend})"
+        if date.weekday() == 5:  # Saturday
+            if date in person['forbidden_weekends']:
+                return False, f"weekend work forbidden (forbidden Saturday: {date})"
+        elif date.weekday() == 6:  # Sunday
+            if date in person['forbidden_weekends']:
+                return False, f"weekend work forbidden (forbidden Sunday: {date})"
         
         # NEW: Check consecutive weekend days prevention
         if (date.weekday() >= 5 and shift != 'night' and 

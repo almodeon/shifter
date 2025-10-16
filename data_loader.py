@@ -4,10 +4,11 @@ from typing import List, Dict, Any, Optional, Tuple
 import os
 
 class DataLoader:
-    def __init__(self, logger=None):
-        """Initialize data loader with optional logger"""
+    def __init__(self, logger=None, assume_sunday_forbidden_from_saturday=True):
+        """Initialize data loader with optional logger and forbidden weekend extension setting"""
         self.logger = logger
         self.supported_formats = ['csv', 'xls', 'xlsx']
+        self.assume_sunday_forbidden_from_saturday = assume_sunday_forbidden_from_saturday
         
         # Try to import pandas and openpyxl for Excel support
         self.pandas_available = False
@@ -257,12 +258,26 @@ class DataLoader:
                             current_date = start_date
                             while current_date <= end_date:
                                 forbidden_weekends.append(current_date)
+                                # Optionally add Sunday if Saturday is forbidden
+                                if (
+                                    self.assume_sunday_forbidden_from_saturday
+                                    and current_date.weekday() == 5
+                                ):
+                                    sunday = current_date + timedelta(days=1)
+                                    if sunday <= end_date and sunday.weekday() == 6:
+                                        forbidden_weekends.append(sunday)
                                 current_date += timedelta(days=1)
                     else:
                         parsed_date = self._parse_date(weekend_str.strip())
                         if parsed_date:
                             forbidden_weekends.append(parsed_date)
-            
+                            if (
+                                self.assume_sunday_forbidden_from_saturday
+                                and parsed_date.weekday() == 5
+                            ):
+                                sunday = parsed_date + timedelta(days=1)
+                                if sunday.weekday() == 6:
+                                    forbidden_weekends.append(sunday)
             # FALLBACK: Handle old multiple column format for backward compatibility
             else:
                 for i in range(1, 4):
@@ -271,7 +286,13 @@ class DataLoader:
                         parsed_date = self._parse_date(str(row[weekend_col]))
                         if parsed_date:
                             forbidden_weekends.append(parsed_date)
-            
+                            if (
+                                self.assume_sunday_forbidden_from_saturday
+                                and parsed_date.weekday() == 5
+                            ):
+                                sunday = parsed_date + timedelta(days=1)
+                                if sunday.weekday() == 6:
+                                    forbidden_weekends.append(sunday)
             # Compile person data
             person_data = {
                 'forbidden_shifts': forbidden_shifts,
