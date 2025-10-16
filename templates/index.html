@@ -341,16 +341,23 @@
                 <!-- Data Files Panel -->
                 <div class="settings-section">
                     <h3 title="Upload your staff and date files">📁 Data Files</h3>
+                    <!-- Template download links as simple hyperlinks, matching font size -->
+                    <div class="form-group" style="margin-bottom: 8px;">
+                        <span style="font-size:13px; color:#007cba; font-weight:bold;">Download templates:</span>
+                        <a href="/download/template/desiderata_template.xlsx" style="text-decoration: underline; color: #007cba; font-weight:normal; margin-left:8px; font-size:13px;">desiderata</a>,
+                        <a href="/download/template/notti_template.xlsx" style="text-decoration: underline; color: #007cba; font-weight:normal; margin-left:2px; font-size:13px;">nights</a>,
+                        <a href="/download/template/festivi_template.xlsx" style="text-decoration: underline; color: #007cba; font-weight:normal; margin-left:2px; font-size:13px;">holidays</a>
+                    </div>
                     <div class="form-group">
-                        <label>Desiderata (CSV/XLSX - Required):</label>
+                        <label>Desiderata <span style="font-weight:normal;">(CSV/XLSX - Required)</span>:</label>
                         <input type="file" name="people_file" accept=".csv,.xlsx,.xls" required>
                     </div>
                     <div class="form-group">
-                        <label>Night Dates (CSV/XLSX - Optional):</label>
+                        <label>Night Dates <span style="font-weight:normal;">(CSV/XLSX - Optional)</span>:</label>
                         <input type="file" name="night_file" accept=".csv,.xlsx,.xls">
                     </div>
                     <div class="form-group">
-                        <label>Holiday Dates (CSV/XLSX - Optional):</label>
+                        <label>Holiday Dates <span style="font-weight:normal;">(CSV/XLSX - Optional)</span>:</label>
                         <input type="file" name="holiday_file" accept=".csv,.xlsx,.xls">
                     </div>
                     <div class="form-group">

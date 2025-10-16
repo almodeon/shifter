@@ -509,6 +509,23 @@ def download_file(filename):
     except Exception as e:
         return f"Error downloading file: {str(e)}", 500
 
+@app.route('/download/template/<path:filename>')
+def download_template_file(filename):
+    """Serve template files from template/ directory"""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        template_dir = os.path.join(base_dir, 'templates')
+        # Prevent path traversal
+        safe_path = os.path.normpath(os.path.join(template_dir, filename))
+        if not safe_path.startswith(template_dir):
+            return "Invalid template file path", 400
+        if os.path.exists(safe_path):
+            return send_file(safe_path, as_attachment=True)
+        else:
+            return "Template file not found", 404
+    except Exception as e:
+        return f"Error downloading template file: {str(e)}", 500
+
 @app.route('/status')
 def get_status():
     """API endpoint to get current job status"""
