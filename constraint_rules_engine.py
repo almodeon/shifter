@@ -76,10 +76,10 @@ class StaffingConstraint(BaseConstraint):
             if self.days_filter(date):
                 staff_count = self._count_staff(scheduler, date)
                 if staff_count < self.min_staff:
-                    violations.append(f"{date}: {staff_count}/{self.min_staff} {self.shift_type} staff (under minimum)")
+                    violations.append(f"[STAFFUNDERMIN] {date}: {staff_count}/{self.min_staff} {self.shift_type} staff (under minimum)")
                 
                 if self.max_staff and staff_count > self.max_staff:
-                    violations.append(f"{date}: {staff_count}/{self.max_staff} {self.shift_type} staff (over maximum)")
+                    violations.append(f"[STAFFOVERMAX] {date}: {staff_count}/{self.max_staff} {self.shift_type} staff (over maximum)")
         
         passed = len(violations) == 0
         message = f"Staffing check: {len(violations)} violations found" if violations else "All staffing requirements met"
@@ -137,7 +137,7 @@ class PersonalConstraint(BaseConstraint):
                                     count += 1
                     
                     if count > self.limit:
-                        violations.append(f"Person {person_id} in {month_key[1]}/{month_key[0]}: {count} {self.constraint_type} shifts > {self.limit} limit")
+                        violations.append(f"[ASSIGNSHIFTOVERMAX] Person {person_id} in {month_key[1]}/{month_key[0]}: {count} {self.constraint_type} shifts > {self.limit} limit")
         
         passed = len(violations) == 0
         message = f"{self.constraint_type.title()} limits check: {len(violations)} violations found" if violations else f"All {self.constraint_type} limits satisfied"
@@ -168,9 +168,9 @@ class WorkHoursConstraint(BaseConstraint):
                     week_hours = scheduler.shift_assigner.calculate_weekly_hours(person_id, week_start)
                     
                     if self.min_hours and week_hours < self.min_hours:
-                        violations.append(f"Person {person_id} week {week_start}: {week_hours:.1f}h < {self.min_hours}h minimum")
+                        violations.append(f"[WKHOURSUNDERMIN] Person {person_id} week {week_start}: {week_hours:.1f}h < {self.min_hours}h minimum")
                     if self.max_hours and week_hours > self.max_hours:
-                        violations.append(f"Person {person_id} week {week_start}: {week_hours:.1f}h > {self.max_hours}h maximum")
+                        violations.append(f"[WKHOURSOVERMAX] Person {person_id} week {week_start}: {week_hours:.1f}h > {self.max_hours}h maximum")
         elif self.constraint_type == 'monthly':
             # Group dates by month
             months = {}
@@ -197,9 +197,9 @@ class WorkHoursConstraint(BaseConstraint):
                         num_days_in_month = (last_day - first_day).days + 1
                         avg_weekly_hours = sum(week_hours_list) / (num_days_in_month / 7)
                         if self.min_hours and avg_weekly_hours < self.min_hours:
-                            violations.append(f"Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week < {self.min_hours}h minimum")
+                            violations.append(f"[WKHOURSUNDERMIN] Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week < {self.min_hours}h minimum")
                         if self.max_hours and avg_weekly_hours > self.max_hours:
-                            violations.append(f"Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week > {self.max_hours}h maximum")
+                            violations.append(f"[WKHOURSOVERMAX] Person {person_id} {month_key[1]}/{month_key[0]}: avg {avg_weekly_hours:.1f}h/week > {self.max_hours}h maximum")
         
         passed = len(violations) == 0
         if self.constraint_type == 'monthly':
@@ -239,7 +239,7 @@ class ForbiddenShiftsConstraint(BaseConstraint):
                     assigned_shifts = scheduler.schedule[person_id].get(forbidden['date'], [])
                     for forbidden_shift in forbidden['shifts']:
                         if forbidden_shift in assigned_shifts:
-                            violations.append(f"Person {person_id} assigned forbidden {forbidden_shift} on {forbidden['date']}")
+                            violations.append(f"[FORBIDDENSHIFT] Person {person_id} assigned forbidden {forbidden_shift} on {forbidden['date']}")
         
         passed = len(violations) == 0
         message = f"Forbidden shifts check: {len(violations)} violations found" if violations else "No forbidden shift violations"
@@ -287,7 +287,7 @@ class HolidayConstraint(BaseConstraint):
                         staff_count += 1
                 
                 if staff_count < self.required_staff:
-                    violations.append(f"Holiday {date}: {staff_count}/{self.required_staff} staff assigned")
+                    violations.append(f"[UNDERSTAFFED] Holiday {date}: {staff_count}/{self.required_staff} staff assigned")
         
         passed = len(violations) == 0
         message = f"Holiday coverage: {len(violations)} violations found" if violations else "All festivities properly covered"
@@ -332,7 +332,7 @@ class AlwaysOnShiftWeekdaysConstraint(BaseConstraint):
 
                 if not assigned_shifts and not is_vacation and not is_tirocinio and not had_night_before:
                     violations.append(
-                        f"Person {person_id} has no shift on {d}"
+                        f"[NOSHIFT] Person {person_id} has no shift on {d}"
                     )
 
         passed = len(violations) == 0

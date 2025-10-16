@@ -1318,7 +1318,7 @@ if __name__ == "__main__":
         },
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
-            'enabled': True,
+            'enabled': False,
             'max_runs': 1000,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 1000,
