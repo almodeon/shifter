@@ -51,9 +51,9 @@ class ConfigManager:
 
             # Data file names (with extensions)
             'data_files': {
-                'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
-                'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
-                'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
+                'people_data_file': 'desiderata_NOV.xlsx',     # People/constraints data file with extension
+                'night_dates_file': 'notti_NOV.xlsx',          # Required night dates file with extension
+                'holiday_dates_file': 'festivi_NOV.xlsx',     # Holiday dates file with extension
             },
             
             # Bias mitigation settings

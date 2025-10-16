@@ -342,15 +342,15 @@
                 <div class="settings-section">
                     <h3 title="Upload your staff and date files">📁 Data Files</h3>
                     <div class="form-group">
-                        <label>People Data (CSV/XLSX):</label>
+                        <label>Desiderata (CSV/XLSX - Required):</label>
                         <input type="file" name="people_file" accept=".csv,.xlsx,.xls" required>
                     </div>
                     <div class="form-group">
-                        <label>Night Dates (Optional):</label>
+                        <label>Night Dates (CSV/XLSX - Optional):</label>
                         <input type="file" name="night_file" accept=".csv,.xlsx,.xls">
                     </div>
                     <div class="form-group">
-                        <label>Holiday Dates (Optional):</label>
+                        <label>Holiday Dates (CSV/XLSX - Optional):</label>
                         <input type="file" name="holiday_file" accept=".csv,.xlsx,.xls">
                     </div>
                     <div class="form-group">
@@ -689,7 +689,7 @@
                                 </div>
                                 <div class="form-group">
                                     <label title="Target number of best-pass runs to accumulate before stopping">Target best-pass runs:</label>
-                                    <input type="number" name="target_best_pass_runs" value="100" min="1" max="10000">
+                                    <input type="number" name="target_best_pass_runs" value="1000" min="1" max="10000">
                                 </div>
                                 <div class="form-group">
                                     <label title="Accumulate best-pass runs before stopping early">
@@ -773,6 +773,13 @@
                                         <input type="checkbox" name="allow_consecutive_afternoons">
                                         <span class="checkbox-label">Allow Consecutive Afternoons</span>
                                     </label>
+                                </div>
+                                <!-- NEW: Max monthly afternoon shifts during training -->
+                                <div class="form-group">
+                                    <label title="Maximum afternoon shifts per person per month during training">
+                                        Max Monthly Afternoon Shifts (Training):
+                                    </label>
+                                    <input type="number" name="max_monthly_afternoon_shifts_during_training" value="3" min="0" max="31">
                                 </div>
                             </div>
                         </div>

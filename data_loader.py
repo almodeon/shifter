@@ -39,62 +39,62 @@ class DataLoader:
         elif level == 'error':
             print(f"ERROR: {message}")
     
-    def load_people_data(self, file_path: str, log_level: str = 'info') -> Dict[str, Any]:
+    def load_people_data(self, file_path: str, log_level: str = 'info') -> Tuple[Dict[str, Any], bool]:
         """Load person constraints from file (supports CSV, XLS, XLSX)"""
         if not os.path.exists(file_path):
             self._log('error', f"File not found: {file_path}")
-            return self._create_test_data()
+            return self._create_test_data(), False
         
         file_ext = os.path.splitext(file_path)[1].lower()
         
         if file_ext == '.csv':
-            return self._load_people_from_csv(file_path, log_level)
+            return self._load_people_from_csv(file_path, log_level), True
         elif file_ext in ['.xls', '.xlsx']:
             if not self.pandas_available or not self.excel_available:
                 self._log('error', f"Excel support not available. Install pandas and openpyxl/xlrd to read {file_ext} files")
-                return self._create_test_data()
-            return self._load_people_from_excel(file_path, log_level)
+                return self._create_test_data(), False
+            return self._load_people_from_excel(file_path, log_level), True
         else:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
-            return self._create_test_data()
-    
-    def load_night_dates(self, file_path: str, log_level: str = 'info') -> List[datetime.date]:
+            return self._create_test_data(), False
+
+    def load_night_dates(self, file_path: str, log_level: str = 'info') -> Tuple[List[datetime.date], bool]:
         """Load required night dates from file (supports CSV, XLS, XLSX)"""
         if not os.path.exists(file_path):
             self._log('error', f"File not found: {file_path}")
-            return []
+            return [], False
         
         file_ext = os.path.splitext(file_path)[1].lower()
         
         if file_ext == '.csv':
-            return self._load_nights_from_csv(file_path, log_level)
+            return self._load_nights_from_csv(file_path, log_level), True
         elif file_ext in ['.xls', '.xlsx']:
             if not self.pandas_available or not self.excel_available:
                 self._log('error', f"Excel support not available. Install pandas and openpyxl/xlrd to read {file_ext} files")
-                return []
-            return self._load_nights_from_excel(file_path, log_level)
+                return [], False
+            return self._load_nights_from_excel(file_path, log_level), True
         else:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
-            return []
-    
-    def load_holiday_dates(self, file_path: str, log_level: str = 'info') -> List[datetime.date]:
+            return [], False
+
+    def load_holiday_dates(self, file_path: str, log_level: str = 'info') -> Tuple[List[datetime.date], bool]:
         """Load holiday dates from file (supports CSV, XLS, XLSX)"""
         if not os.path.exists(file_path):
             self._log('info', f"Holiday file not found: {file_path} - no holiday days will be scheduled")
-            return []
+            return [], False
         
         file_ext = os.path.splitext(file_path)[1].lower()
         
         if file_ext == '.csv':
-            return self._load_festivities_from_csv(file_path, log_level)
+            return self._load_festivities_from_csv(file_path, log_level), True
         elif file_ext in ['.xls', '.xlsx']:
             if not self.pandas_available or not self.excel_available:
                 self._log('error', f"Excel support not available. Install pandas and openpyxl/xlrd to read {file_ext} files")
-                return []
-            return self._load_festivities_from_excel(file_path, log_level)
+                return [], False
+            return self._load_festivities_from_excel(file_path, log_level), True
         else:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
-            return []
+            return [], False
     
     def _load_people_from_csv(self, csv_file: str, log_level: str) -> Dict[str, Any]:
         """Load person data from CSV file"""

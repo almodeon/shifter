@@ -1201,56 +1201,36 @@ def main(settings_overrides=None):
     holiday_file = settings['data_files']['holiday_dates_file']
     
     # Load data files directly with specified extensions
-    people_data = data_loader.load_people_data(people_file, log_level='error')
+    people_data, people_data_success = data_loader.load_people_data(people_file, log_level='error')
     
-    # If the specified file doesn't exist, try alternative formats
-    if not people_data or len(people_data) < 2:
-        file_base = os.path.splitext(people_file)[0]  # Remove extension to get base name
-        for ext in ['xlsx', 'xls', 'csv']:
-            alt_file = f'{file_base}.{ext}'
-            if os.path.exists(alt_file) and alt_file != people_file:  # Don't retry the same file
-                print(f"📊 File {people_file} not found, trying {alt_file}...")
-                people_data = data_loader.load_people_data(alt_file, log_level='error')
-                if people_data and len(people_data) >= 2:
-                    break
+    # Check if people data is loaded correctly
+    if not people_data_success:
+        # Warn the user if the file was not found and do not try alternatives
+        print(f"❌ File {people_file} not found")
+    else:
+        print(f"✅ Loaded {len(people_data)} people from {people_file}")
 
-    print(f"👥 Loaded {len(people_data)} people from {people_file}")
+    night_dates, night_dates_success = data_loader.load_night_dates(night_file, log_level='error')
 
-    night_dates = data_loader.load_night_dates(night_file, log_level='error')
-    
-    # If the specified file doesn't exist, try alternative formats
-    if not night_dates:
-        file_base = os.path.splitext(night_file)[0]
-        for ext in ['xlsx', 'xls', 'csv']:
-            alt_file = f'{file_base}.{ext}'
-            if os.path.exists(alt_file) and alt_file != night_file:
-                print(f"🌙 File {night_file} not found, trying {alt_file}...")
-                night_dates = data_loader.load_night_dates(alt_file, log_level='error')
-                if night_dates:
-                    break
+    # Check if night dates are loaded correctly
+    if not night_dates_success:
+        print(f"❌ File {night_file} not found")
+    else:
+        print(f"✅ Loaded {len(night_dates)} night dates from {night_file}")
 
-    print(f"🌙 Loaded {len(night_dates)} night dates from {night_file}")
-    
     # Load holiday dates
-    holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error')
-    
-    # If the specified file doesn't exist, try alternative formats
-    if not holiday_dates:
-        file_base = os.path.splitext(holiday_file)[0]
-        for ext in ['xlsx', 'xls', 'csv']:
-            alt_file = f'{file_base}.{ext}'
-            if os.path.exists(alt_file) and alt_file != holiday_file:
-                print(f"🎉 File {holiday_file} not found, trying {alt_file}...")
-                holiday_dates = data_loader.load_holiday_dates(alt_file, log_level='error')
-                if holiday_dates:
-                    break
+    holiday_dates, holiday_dates_success = data_loader.load_holiday_dates(holiday_file, log_level='error')
 
-    print(f"🎉 Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
+    # Check if holiday dates are loaded correctly
+    if not holiday_dates_success:
+        print(f"❌ File {holiday_file} not found")
+    else:
+        print(f"✅ Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
 
     # Validate loaded data
     is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, holiday_dates)
     if not is_valid:
-        print("⚠️  Data validation errors:")
+        print("❌  Data validation errors:")
         for error in validation_errors:
             print(f"   {error}")
     

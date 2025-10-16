@@ -146,42 +146,35 @@ def process_schedule(request_data):
             print(f"Debug mode: Using default files {people_file}, {night_file}, {holiday_file}")
             
             # Load data files with fallback logic (like main.py)
-            people_data = data_loader.load_people_data(people_file, log_level='error')
+            people_data, people_data_success = data_loader.load_people_data(people_file, log_level='error')
             
-            # If the specified file doesn't exist, try alternative formats
-            if not people_data or len(people_data) < 2:
-                file_base = os.path.splitext(people_file)[0]  # Remove extension to get base name
-                for ext in ['xlsx', 'xls', 'csv']:
-                    alt_file = f'{file_base}.{ext}'
-                    if os.path.exists(alt_file) and alt_file != people_file:  # Don't retry the same file
-                        people_data = data_loader.load_people_data(alt_file, log_level='error')
-                        if people_data and len(people_data) >= 2:
-                            break
-            
-            night_dates = data_loader.load_night_dates(night_file, log_level='error')
-            
-            # If the specified file doesn't exist, try alternative formats
-            if not night_dates:
-                file_base = os.path.splitext(night_file)[0]
-                for ext in ['xlsx', 'xls', 'csv']:
-                    alt_file = f'{file_base}.{ext}'
-                    if os.path.exists(alt_file) and alt_file != night_file:
-                        night_dates = data_loader.load_night_dates(alt_file, log_level='error')
-                        if night_dates:
-                            break
+            # Check if people data is loaded correctly
+            if not people_data_success:
+                # Warn the user if the file was not found
+                print(f"❌ File {people_file} not found")
+                raise Exception(f"People data file not found or invalid.")
+            else:
+                print(f"✅ Loaded {len(people_data)} people from {people_file}")
+
+            night_dates, night_dates_success = data_loader.load_night_dates(night_file, log_level='error')
+
+            # Check if night dates are loaded correctly
+            if not night_dates_success:
+                print(f"❌ File {night_file} not found")
+                raise Exception(f"Night dates file not found or invalid.")
+            else:
+                print(f"✅ Loaded {len(night_dates)} night dates from {night_file}")
             
             # Load holiday dates
-            holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error')
+            holiday_dates, holiday_dates_success = data_loader.load_holiday_dates(holiday_file, log_level='error')
             
-            # If the specified file doesn't exist, try alternative formats
-            if not holiday_dates:
-                file_base = os.path.splitext(holiday_file)[0]
-                for ext in ['xlsx', 'xls', 'csv']:
-                    alt_file = f'{file_base}.{ext}'
-                    if os.path.exists(alt_file) and alt_file != holiday_file:
-                        holiday_dates = data_loader.load_holiday_dates(alt_file, log_level='error')
-                        if holiday_dates:
-                            break
+            # Check if holiday dates are loaded correctly
+            if not holiday_dates_success:
+                print(f"❌ File {holiday_file} not found")
+                raise Exception(f"Holiday dates file not found or invalid.")
+            else:
+                print(f"✅ Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
+
         else:
             # Save uploaded files and load from them (existing logic)
             people_file = None
@@ -204,10 +197,39 @@ def process_schedule(request_data):
                 with open(holiday_file, 'wb') as f:
                     f.write(files['holiday_file']['content'])
             
-            # Load data using DataLoader
-            people_data = data_loader.load_people_data(people_file, log_level='error') if people_file else {}
-            night_dates = data_loader.load_night_dates(night_file, log_level='error') if night_file else []
-            holiday_dates = data_loader.load_holiday_dates(holiday_file, log_level='error') if holiday_file else []
+            # Load people data (must be provided)
+            people_data, people_data_success = data_loader.load_people_data(people_file, log_level='error') if people_file else ({}, False)
+
+            # Load night dates: if file provided, check success; if not, treat as empty and success True
+            if night_file:
+                night_dates, night_dates_success = data_loader.load_night_dates(night_file, log_level='error')
+            else:
+                night_dates, night_dates_success = [], True
+
+            # Load holiday dates: if file provided, check success; if not, treat as empty and success True
+            if holiday_file:
+                holiday_dates, holiday_dates_success = data_loader.load_holiday_dates(holiday_file, log_level='error')
+            else:
+                holiday_dates, holiday_dates_success = [], True
+        
+        # Write some terminal output for debugging
+        print(f"{'✅' if people_data_success else '❌'} People file {'loaded successfully' if people_data_success else 'failed to load'} (count: {len(people_data)})")
+        if night_file:
+            print(f"{'✅' if night_dates_success else '❌'} Night dates file {'loaded successfully' if night_dates_success else 'failed to load'} (count: {len(night_dates)})")
+        else:
+            print("⚠️  No night dates file provided, proceeding with empty night dates.")
+        if holiday_file:
+            print(f"{'✅' if holiday_dates_success else '❌'} Holiday dates file {'loaded successfully' if holiday_dates_success else 'failed to load'} (count: {len(holiday_dates)})")
+        else:
+            print("⚠️  No holiday dates file provided, proceeding with empty holiday dates.")
+
+        # Check if people, night and holidays data is loaded correctly
+        if not people_data_success:
+            raise Exception(f"People data file not found or invalid.")
+        if not night_dates_success:
+            raise Exception(f"Night dates file not found or invalid.")
+        if not holiday_dates_success:
+            raise Exception(f"Holiday dates file not found or invalid.")
         
         # Create config manager (now available for both modes)
         config = ConfigManager()
@@ -278,6 +300,11 @@ def process_schedule(request_data):
                 'prefer_not_in_internship': 'prefer_not_in_internship' in form,
                 'max_consecutive_afternoons': int(form.get('max_consecutive_afternoons', 1)),
                 'allow_consecutive_afternoons': 'allow_consecutive_afternoons' in form,
+            },
+            
+            # NEW: Training options (max monthly afternoon shifts during training)
+            'training_options': {
+                'max_monthly_afternoon_shifts_during_training': int(form.get('max_monthly_afternoon_shifts_during_training', 3))
             },
             
             # Web-specific logging overrides (reduce noise in web interface)
