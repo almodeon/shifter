@@ -24,15 +24,14 @@ class ConstraintVerifier:
         for constraint_id, result in results.items():
             status = 'PASS' if result.passed else 'FAIL'
             constraint_status[constraint_id] = status
-            constraint_violations[constraint_id] = result.violations
+            constraint_violations[constraint_id] = result.violations  # Now a list of dicts
 
             # Log result
             level = 'info' if result.passed else 'error'
             self.logger.log('constraint_verification', level, f"{result.name}: {status}")
-            
             if not result.passed and result.violations:
                 for violation in result.violations:
-                    self.logger.log('constraint_verification', 'error', f"  - {violation}")
+                    self.logger.log('constraint_verification', 'error', f"  - {violation['message']}")
         
         # Print summary
         self._print_summary(results)

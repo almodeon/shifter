@@ -22,8 +22,20 @@ class ScheduleDocxCreator:
         night_shift_labels=None,
         hide_vacation_desiderata=True,
         show_vacations_on_holidays=False,
+        extend_weekend_desiderata_to_sunday=True,
         night_shift_color="00AA00",  # color for MONTO/SMONTO NOTTE (default green)
-        compact_desiderata_in_richieste_table=False  # NEW: control desiderata format in richieste table
+        compact_desiderata_in_richieste_table=False,  # NEW: control desiderata format in richieste table
+        show_violations=True,
+        show_violation_types=[
+            'STAFFUNDERMIN',
+            'STAFFOVERMAX',
+            'ASSIGNSHIFTOVERMAX',
+            'WKHOURSUNDERMIN',
+            'WKHOURSOVERMAX',
+            'FORBIDDENSHIFT',
+            'UNDERSTAFFED',
+            'NOSHIFT']
+            
     ):
         self.json_path = json_path
         self.doc_path = doc_path
@@ -41,9 +53,9 @@ class ScheduleDocxCreator:
             1.2,  # MATTINO
             1.2,  # POMERIGGIO
             1.2,  # NOTTE
-            3.0,  # DESIDERATA
+            2.7,  # DESIDERATA
             1.2,  # TIROCINIO/RETE
-            1.2   # ASSENZE
+            1.5   # ASSENZE
         ]
         self.columns = [
             "", "MATTINO", "POMERIGGIO", "NOTTE",
@@ -67,6 +79,8 @@ class ScheduleDocxCreator:
         self.show_vacations_on_holidays = show_vacations_on_holidays
         self.night_shift_color = night_shift_color
         self.compact_desiderata_in_richieste_table = compact_desiderata_in_richieste_table
+        self.show_violations = show_violations
+        self.show_violation_types = show_violation_types
 
     def set_row_bg_color(self, row, color_hex):
         for cell in row.cells:
@@ -243,14 +257,11 @@ class ScheduleDocxCreator:
         violations_by_date = {}
         if settings and settings.get("docx_output", {}).get("show_violations"):
             show_violations = True
-            # Map violations to dates for quick lookup
-            import re
             for vlist in violations.values():
                 for v in vlist:
-                    # Try to extract date from violation string (format: 'YYYY-MM-DD:' or 'on YYYY-MM-DD')
-                    m = re.search(r'(\d{4}-\d{2}-\d{2})', v)
-                    if m:
-                        vdate = m.group(1)
+                    # v is now a dict/object
+                    vdate = v.get("date")
+                    if vdate:
                         if vdate not in violations_by_date:
                             violations_by_date[vdate] = []
                         violations_by_date[vdate].append(v)
@@ -397,11 +408,20 @@ class ScheduleDocxCreator:
                 if assenze_labels:
                     p.add_run("; ")
                 for idxv, v in enumerate(violations_by_date[date_str]):
-                    if idxv > 0:
-                        p.add_run("\n")
-                    print(f"VIOLATION: {v}")  # Debug print
-                    run = p.add_run(v)
-                    run.font.color.rgb = RGBColor(0xC6, 0x1A, 0x09)  # dark red for violations
+                    v_type = v.get("type", "")
+                    # Only show if type is in show_violation_types and show_violations is True
+                    if v_type in self.show_violation_types:
+                        if idxv > 0:
+                            p.add_run("\n")
+                        constraint_id = v.get("constraint_id", str(v))
+                        person_id = v.get("person_id", "")
+                        constraint_name = v.get("name", "")
+                        constraint_type = v.get("type", "")
+                        if person_id:
+                            run = p.add_run(f"[{constraint_type} {person_id}]")
+                        else:
+                            run = p.add_run(f"[{constraint_type}]")
+                        run.font.color.rgb = RGBColor(0xC6, 0x1A, 0x09)
 
             assenze_cell.width = Inches(self.column_widths[-1])
             if is_weekend:

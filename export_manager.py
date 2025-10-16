@@ -954,8 +954,9 @@ class ExportManager:
         try:
             creator = ScheduleDocxCreator(
                 json_path=json_file,
-                doc_path=docx_file
-                # Optionally add more settings here if needed
+                doc_path=docx_file,
+                show_violations=True,
+                show_violation_types=['STAFFUNDERMIN', 'STAFFOVERMAX', 'FORBIDDENSHIFT', 'UNDERSTAFFED', 'NOSHIFT']
             )
             creator.create_doc(settings=self.scheduler.settings, constraint_violations=constraint_violations)
             self.logger.log('export_notifications', 'info', f"DOCX exported to {docx_file}")
