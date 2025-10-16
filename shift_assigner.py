@@ -681,6 +681,33 @@ class ShiftAssigner:
                     eligibility_debug[person_id] = reasons
                     continue
             
+            # --- TRAINING: Enforce max_monthly_afternoon_shifts_during_training ---
+            if shift == 'afternoon':
+                person = self.scheduler.people[person_id]
+                # Person is in training if they have non-empty tirocinio_dates
+                is_in_training = bool(person.get('tirocinio_dates'))
+                if is_in_training:
+                    max_training_afternoons = self.scheduler.settings.get('training_options', {}).get('max_monthly_afternoon_shifts_during_training', 3)
+                    # Count afternoon shifts in this month
+                    month_key = (date.year, date.month)
+                    month_start = date.replace(day=1)
+                    if month_key[1] == 12:
+                        next_month = month_start.replace(year=month_key[0] + 1, month=1)
+                    else:
+                        next_month = month_start.replace(month=month_key[1] + 1)
+                    month_end = next_month - timedelta(days=1)
+                    afternoons_this_month = 0
+                    current_month_date = month_start
+                    while current_month_date <= month_end:
+                        assigned_shifts = self.scheduler.schedule[person_id].get(current_month_date, [])
+                        if 'afternoon' in assigned_shifts:
+                            afternoons_this_month += 1
+                        current_month_date += timedelta(days=1)
+                    if afternoons_this_month >= max_training_afternoons:
+                        reasons.append(f"in training: reached max monthly afternoon shifts ({afternoons_this_month} >= {max_training_afternoons})")
+                        eligibility_debug[person_id] = reasons
+                        continue
+
             # If we get here, person is eligible
             eligible_people.append(person_id)
             eligibility_debug[person_id] = ["eligible"]

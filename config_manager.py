@@ -109,6 +109,10 @@ class ConfigManager:
                 'max_consecutive_afternoons': 1,  # Max consecutive afternoons per person
                 'allow_consecutive_afternoons': False  # Allow consecutive afternoon shifts
             },
+
+            'training_options': {
+                'max_monthly_afternoon_shifts_during_training': 3,  # Max afternoon shifts per person per month
+            },
             
             # Logging/Output verbosity settings (silence, error, info, debug)
             'logging': {

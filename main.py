@@ -1341,7 +1341,7 @@ if __name__ == "__main__":
             'enabled': True,
             'max_runs': 1000,
             'only_consider_best_passes': True,
-            'target_best_pass_runs': 100,
+            'target_best_pass_runs': 1000,
             'accumulate_best_pass_runs': True
         },
         'logging': {
