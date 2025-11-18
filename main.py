@@ -1042,8 +1042,8 @@ def main(settings_overrides=None):
     # Option 2: Use custom configuration inline (as before)
     base_settings = {
         # Staff requirements
-        'min_morning_staff': 2,
-        'target_afternoon_staff': 1,
+        'min_morning_staff': 6,
+        'target_afternoon_staff': 2,
         'night_staff': 1,
         'saturday_morning_staff': 0,
         'saturday_afternoon_staff': 0,
@@ -1235,8 +1235,8 @@ def main(settings_overrides=None):
             print(f"   {error}")
     
     # Define scheduling period (example: November 2025)
-    start_date = datetime(2025, 11, 1).date()
-    end_date = datetime(2025, 11, 30).date()
+    start_date = datetime(2025, 12, 1).date()
+    end_date = datetime(2025, 12, 31).date()
     
     # Create scheduler instance with actual data
     scheduler = HospitalScheduler(
@@ -1306,20 +1306,17 @@ def main(settings_overrides=None):
 if __name__ == "__main__":
     overrides = {
         'data_files': {
-            'people_data_file': 'desiderata_NOV.xlsx',     # People/constraints data file with extension
-            'night_dates_file': 'notti_NOV.xlsx',          # Required night dates file with extension
-            'holiday_dates_file': 'festivi_NOV.xlsx',     # Holiday dates file with extension
-            # 'people_data_file': 'desiderata_NOV.csv',     # People/constraints data file with extension
-            # 'night_dates_file': 'notti_NOV.csv',          # Required night dates file with extension
-            # 'holiday_dates_file': 'festivi_NOV.csv',     # Holiday dates file with extension
+            'people_data_file': 'desiderata_DEC.xlsx',     # People/constraints data file with extension
+            'night_dates_file': 'notti_DEC.xlsx',          # Required night dates file with extension
+            'holiday_dates_file': 'festivi_DEC.xlsx',     # Holiday dates file with extension
             # 'people_data_file': 'desiderata_empty.csv',     # People/constraints data file with extension
             # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
             # 'holiday_dates_file': 'festivi_empty.csv',     # Holiday dates file with extension
         },
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
-            'enabled': False,
-            'max_runs': 1000,
+            'enabled': True,
+            'max_runs': 2000,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 1000,
             'accumulate_best_pass_runs': True
@@ -1337,7 +1334,7 @@ if __name__ == "__main__":
             'afternoon_balancing': 'error',
             'constraint_verification': 'error',
             'schedule_display': 'error',
-            'summary_statistics': 'error',
+            'summary_statistics': 'info',
             'export_notifications': 'error'
         },
     }
