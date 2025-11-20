@@ -78,6 +78,25 @@ class DataLoader:
             self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
             return [], False
 
+    def load_holiday_shifts(self, file_path: str, log_level: str = 'info') -> Tuple[Dict[datetime.date, str], bool]:
+        """Load holiday/Sunday shift types from file (supports CSV, XLS, XLSX)"""
+        if not os.path.exists(file_path):
+            self._log('info', f"Holiday shifts file not found: {file_path} - all Sundays and holidays will be REGULAR (12h MP)")
+            return {}, False
+        
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext == '.csv':
+            return self._load_holiday_shifts_from_csv(file_path, log_level), True
+        elif file_ext in ['.xls', '.xlsx']:
+            if not self.pandas_available or not self.excel_available:
+                self._log('error', f"Excel support not available. Install pandas and openpyxl/xlrd to read {file_ext} files")
+                return {}, False
+            return self._load_holiday_shifts_from_excel(file_path, log_level), True
+        else:
+            self._log('error', f"Unsupported file format: {file_ext}. Supported formats: {self.supported_formats}")
+            return {}, False
+
     def load_holiday_dates(self, file_path: str, log_level: str = 'info') -> Tuple[List[datetime.date], bool]:
         """Load holiday dates from file (supports CSV, XLS, XLSX)"""
         if not os.path.exists(file_path):
@@ -489,6 +508,75 @@ class DataLoader:
         except Exception as e:
             self._log('error', f"Error reading Excel file {excel_file}: {e}")
             return []
+    
+    def _load_holiday_shifts_from_csv(self, csv_file: str, log_level: str) -> Dict[datetime.date, str]:
+        """Load holiday/Sunday shift types from CSV file"""
+        holiday_shifts = {}
+        
+        # Try different encodings
+        encodings = ['utf-8', 'utf-8-sig', 'latin1', 'cp1252']
+        
+        for encoding in encodings:
+            try:
+                with open(csv_file, 'r', encoding=encoding) as file:
+                    reader = csv.DictReader(file)
+                    
+                    if log_level in ['info', 'debug']:
+                        self._log('info', f"Reading holiday/Sunday shift types from {csv_file}...")
+                        self._log('info', f"Columns found: {reader.fieldnames}")
+                    
+                    for row in reader:
+                        date_str = row.get('Date', '').strip()
+                        shift_type = row.get('Type', '').strip().upper()
+                        
+                        if date_str and shift_type in ['SPLIT', 'REGULAR']:
+                            parsed_date = self._parse_date(date_str)
+                            if parsed_date:
+                                holiday_shifts[parsed_date] = shift_type
+                                if log_level in ['debug']:
+                                    self._log('debug', f"  Date {parsed_date}: {shift_type}")
+                
+                break  # Successfully read with this encoding
+                
+            except (UnicodeDecodeError, FileNotFoundError) as e:
+                if encoding == encodings[-1]:  # Last encoding tried
+                    self._log('error', f"Could not read {csv_file}: {e}")
+                continue
+        
+        return holiday_shifts
+    
+    def _load_holiday_shifts_from_excel(self, excel_file: str, log_level: str) -> Dict[datetime.date, str]:
+        """Load holiday/Sunday shift types from Excel file"""
+        try:
+            df = self.pd.read_excel(excel_file, engine='openpyxl' if excel_file.endswith('.xlsx') else None)
+            
+            if log_level in ['info', 'debug']:
+                self._log('info', f"Reading holiday/Sunday shift types from {excel_file}...")
+                self._log('info', f"Columns found: {list(df.columns)}")
+            
+            holiday_shifts = {}
+            
+            for _, row in df.iterrows():
+                date_value = row.get('Date')
+                shift_type = str(row.get('Type', '')).strip().upper()
+                
+                if date_value and shift_type in ['SPLIT', 'REGULAR']:
+                    # Handle Excel date objects
+                    if isinstance(date_value, datetime):
+                        parsed_date = date_value.date()
+                    else:
+                        parsed_date = self._parse_date(str(date_value).strip())
+                    
+                    if parsed_date:
+                        holiday_shifts[parsed_date] = shift_type
+                        if log_level in ['debug']:
+                            self._log('debug', f"  Date {parsed_date}: {shift_type}")
+            
+            return holiday_shifts
+            
+        except Exception as e:
+            self._log('error', f"Error reading Excel file {excel_file}: {e}")
+            return {}
     
     def _parse_shift(self, shift_str: str) -> Optional[List[Dict]]:
         """Parse shift string like '03/10/2025 PN' or '06/10/2025-17/10/2025 PN' into date(s) and shift types"""

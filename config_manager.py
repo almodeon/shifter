@@ -33,6 +33,8 @@ class ConfigManager:
             'afternoon_shift_hours': 6,
             'night_shift_hours': 12,
             'sunday_mp_shift_hours': 12,
+            'sunday_split_shift_morning_hours': 4,
+            'sunday_split_shift_afternoon_hours': 2,
             
             # Monthly and daily limits
             'max_weekend_days_per_month': 2,
@@ -54,6 +56,7 @@ class ConfigManager:
                 'people_data_file': 'desiderata_NOV.xlsx',     # People/constraints data file with extension
                 'night_dates_file': 'notti_NOV.xlsx',          # Required night dates file with extension
                 'holiday_dates_file': 'festivi_NOV.xlsx',     # Holiday dates file with extension
+                'holiday_shifts_file': 'holiday_shifts_NOV.csv',   # Holiday/Sunday shift types file (SPLIT or REGULAR)
             },
             
             # Bias mitigation settings

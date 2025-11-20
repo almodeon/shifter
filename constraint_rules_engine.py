@@ -109,6 +109,15 @@ class StaffingConstraint(BaseConstraint):
             assigned_shifts = scheduler.schedule[person_id].get(check_date, [])
             if self.shift_type in assigned_shifts:
                 count += 1
+            # Split MP shifts count for both morning and afternoon staffing
+            elif self.shift_type in ['morning', 'afternoon'] and 'split_mp' in assigned_shifts:
+                count += 1
+            # Regular MP shifts count for both morning and afternoon staffing
+            elif self.shift_type in ['morning', 'afternoon'] and 'mp' in assigned_shifts:
+                count += 1
+            # On split shift days, split_mp shifts count toward MP requirements
+            elif self.shift_type == 'mp' and 'split_mp' in assigned_shifts and scheduler._is_split_shift_day(check_date):
+                count += 1
         return count
 
 class PersonalConstraint(BaseConstraint):
@@ -354,6 +363,8 @@ class HolidayConstraint(BaseConstraint):
                     assigned_shifts = scheduler.schedule[person_id].get(date, [])
                     if 'mp' in assigned_shifts:  # Holiday uses MP shift
                         staff_count += 1
+                    elif 'split_mp' in assigned_shifts and scheduler._is_split_shift_day(date):  # Holiday uses split MP shift
+                        staff_count += 1
                 
                 if staff_count < self.required_staff:
                     violations.append({
@@ -449,13 +460,13 @@ class ConstraintRulesEngine:
         # Staffing constraints
         self.add_constraint(StaffingConstraint(
             'weekday_morning_staff', 'morning', settings['min_morning_staff'],
-            days_filter=lambda d: d.weekday() < 5,  # Monday-Friday
+            days_filter=lambda d: d.weekday() < 5 and d not in self.scheduler.holiday_dates,  # Monday-Friday, not holidays
             severity=ConstraintSeverity.CRITICAL
         ))
         
         self.add_constraint(StaffingConstraint(
             'weekday_afternoon_staff', 'afternoon', settings['target_afternoon_staff'],
-            days_filter=lambda d: d.weekday() < 5,  # Monday-Friday
+            days_filter=lambda d: d.weekday() < 5 and d not in self.scheduler.holiday_dates,  # Monday-Friday, not holidays
             severity=ConstraintSeverity.HIGH
         ))
         

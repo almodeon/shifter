@@ -92,20 +92,32 @@ class ShiftAssigner:
                     self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
     def assign_all_holiday_shifts(self, dates_list, people_list):
-        """Assign holiday MP shifts with high priority (NEW - MINIMAL METHOD)"""
+        """Assign holiday MP or Split MP shifts with high priority"""
         holiday_dates = [date for date in dates_list if date in self.scheduler.holiday_dates]
         
         for date in holiday_dates:
             required_people = self.scheduler.settings.get('holiday_staff', 1)
             for i in range(required_people):
-                best_person = self.find_best_person_for_shift(people_list, date, 'mp')
-                if best_person:
-                    self._assign_shift(best_person, date, 'mp')
-                    self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned holiday MP: {best_person} on {date}")
+                if self.scheduler._is_split_shift_day(date):
+                    # Split holiday shift (4h morning + 2h afternoon)
+                    best_person = self.find_best_person_for_shift(people_list, date, 'split_mp')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'split_mp')
+                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Holiday Split MP: {best_person} on {date}")
+                    else:
+                        failure_msg = f"Failed to assign Holiday Split MP shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
                 else:
-                    failure_msg = f"Failed to assign holiday MP shift on {date} (position {i+1})"
-                    self.scheduler.warnings.append(failure_msg)
-                    self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                    # Regular holiday shift (12h MP)
+                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                    if best_person:
+                        self._assign_shift(best_person, date, 'mp')
+                        self.scheduler.logger.log('shift_assignment_debug', 'info', f"Assigned holiday MP: {best_person} on {date}")
+                    else:
+                        failure_msg = f"Failed to assign holiday MP shift on {date} (position {i+1})"
+                        self.scheduler.warnings.append(failure_msg)
+                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
 
     def assign_all_weekend_shifts(self, dates_list, people_list):
         """Assign all weekend shifts across all dates"""
@@ -121,15 +133,27 @@ class ShiftAssigner:
             elif date.weekday() == 6:  # Sunday
                 required_people = self.scheduler.settings.get('sunday_staff', 1)
                 for i in range(required_people):
-                    best_person = self.find_best_person_for_shift(people_list, date, 'mp')
-                    if best_person:
-                        self._assign_shift(best_person, date, 'mp')
-                        self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Sunday MP: {best_person} on {date}")
+                    if self.scheduler._is_split_shift_day(date):
+                        # Split Sunday shift (4h morning + 2h afternoon)
+                        best_person = self.find_best_person_for_shift(people_list, date, 'split_mp')
+                        if best_person:
+                            self._assign_shift(best_person, date, 'split_mp')
+                            self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Sunday Split MP: {best_person} on {date}")
+                        else:
+                            failure_msg = f"Failed to assign Sunday Split MP shift on {date} (position {i+1})"
+                            self.scheduler.warnings.append(failure_msg)
+                            self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
                     else:
-                        # ADD THIS: Capture the failure as a warning
-                        failure_msg = f"Failed to assign Sunday MP shift on {date} (position {i+1})"
-                        self.scheduler.warnings.append(failure_msg)
-                        self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
+                        # Regular Sunday shift (12h MP)
+                        best_person = self.find_best_person_for_shift(people_list, date, 'mp')
+                        if best_person:
+                            self._assign_shift(best_person, date, 'mp')
+                            self.scheduler.logger.log('weekend_shift_balancing', 'info', f"Assigned Sunday MP: {best_person} on {date}")
+                        else:
+                            # ADD THIS: Capture the failure as a warning
+                            failure_msg = f"Failed to assign Sunday MP shift on {date} (position {i+1})"
+                            self.scheduler.warnings.append(failure_msg)
+                            self.scheduler.logger.log('shift_assignment_warnings', 'error', failure_msg)
                         
             else:  # Saturday
                 # Saturday morning
@@ -236,6 +260,9 @@ class ShiftAssigner:
                         total_hours += self.scheduler.settings['afternoon_shift_hours']
                     elif shift == 'mp':
                         total_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                    elif shift == 'split_mp':
+                        total_hours += (self.scheduler.settings.get('sunday_split_shift_morning_hours', 4) +
+                                      self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
                     elif shift == 'night':
                         total_hours += self.scheduler.settings['night_shift_hours']
             
@@ -294,6 +321,9 @@ class ShiftAssigner:
                                         new_total_hours += self.scheduler.settings['afternoon_shift_hours']
                                     elif shift == 'mp':
                                         new_total_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                                    elif shift == 'split_mp':
+                                        new_total_hours += (self.scheduler.settings.get('sunday_split_shift_morning_hours', 4) +
+                                                          self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
                                     elif shift == 'night':
                                         new_total_hours += self.scheduler.settings['night_shift_hours']
                             
@@ -329,6 +359,9 @@ class ShiftAssigner:
                                 final_total_hours += self.scheduler.settings['afternoon_shift_hours']
                             elif shift == 'mp':
                                 final_total_hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                            elif shift == 'split_mp':
+                                final_total_hours += (self.scheduler.settings.get('sunday_split_shift_morning_hours', 4) +
+                                                    self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
                             elif shift == 'night':
                                 final_total_hours += self.scheduler.settings['night_shift_hours']
                     
@@ -659,6 +692,9 @@ class ShiftAssigner:
                 shift_hours = self.scheduler.settings['afternoon_shift_hours']
             elif shift == 'mp':  # Sunday MP shift
                 shift_hours = self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+            elif shift == 'split_mp':  # Sunday Split MP shift (4h morning + 2h afternoon)
+                shift_hours = (self.scheduler.settings.get('sunday_split_shift_morning_hours', 4) +
+                              self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
             else:  # night
                 shift_hours = self.scheduler.settings['night_shift_hours']
             
@@ -1240,6 +1276,9 @@ class ShiftAssigner:
                     hours += self.scheduler.settings['afternoon_shift_hours']
                 elif shift == 'mp':
                     hours += self.scheduler.settings.get('sunday_mp_shift_hours', 12)
+                elif shift == 'split_mp':
+                    hours += (self.scheduler.settings.get('sunday_split_shift_morning_hours', 4) +
+                            self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
                 elif shift == 'night':
                     hours += self.scheduler.settings['night_shift_hours']
                 # Don't count 'rest_after_night' as hours
@@ -1274,6 +1313,9 @@ class ShiftAssigner:
         elif shift == 'mp':
             # MP counts as both morning and afternoon for weekend tracking
             # But don't double-count in the individual counters
+            pass
+        elif shift == 'split_mp':
+            # Split MP: also don't double-count, handled like regular MP
             pass
     
         # Count weekend days (only if this is a weekend and they don't already have a weekend shift this day)

@@ -82,6 +82,10 @@ class ExportManager:
                         shift_codes.append('MP')
                         morning_count += 1  # MP counts as both morning and afternoon staff
                         afternoon_count += 1
+                    elif shift == 'split_mp':
+                        shift_codes.append('SMP')  # Split Morning+Afternoon (4h+2h)
+                        morning_count += 1  # Split MP counts as both morning and afternoon staff
+                        afternoon_count += 1
                     elif shift == 'night':
                         shift_codes.append('N')
                         night_count += 1

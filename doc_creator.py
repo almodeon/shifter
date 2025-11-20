@@ -63,8 +63,9 @@ class ScheduleDocxCreator:
         ]
         self.FORBIDDEN_SHIFT_CODES = {
             "afternoon": "NO POME",
-            "night": "NO NOTTE",
+            "night": "NO NOTTE", 
             "morning": "NO MATT",
+            "split_mp": "NO SMP",
         }
         self.DAY_NAME_IT = {
             "Monday": "Lunedì",
@@ -106,9 +107,13 @@ class ScheduleDocxCreator:
             elif shift_type == "morning":
                 if "morning" in shifts or "mp" in shifts:
                     ids.append(pid)
+                elif "split_mp" in shifts:
+                    ids.append(f"{pid}(spz)")
             elif shift_type == "afternoon":
                 if "afternoon" in shifts or "mp" in shifts:
                     ids.append(pid)
+                elif "split_mp" in shifts:
+                    ids.append(f"{pid}(spz)")
             else:
                 if shift_type in shifts:
                     ids.append(pid)
@@ -230,9 +235,10 @@ class ScheduleDocxCreator:
         # Map shift to code and label
         shift_map = {
             "morning": ("M", "NO MATT"),
-            "afternoon": ("P", "NO POME"),
+            "afternoon": ("P", "NO POME"), 
             "night": ("N", "NO NOTTE"),
             "mp": ("MP", "NO MP"),
+            "split_mp": ("SMP", "NO SMP"),
             "weekend": ("W", "NO WEEKEND"),
         }
         if self.compact_desiderata_in_richieste_table:

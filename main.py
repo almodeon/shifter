@@ -15,12 +15,13 @@ from config_manager import ConfigManager
 from data_loader import DataLoader
 
 class HospitalScheduler:
-    def __init__(self, people_data=None, night_dates=None, holiday_dates=None, settings=None, config=None):
+    def __init__(self, people_data=None, night_dates=None, holiday_dates=None, holiday_shifts=None, settings=None, config=None):
         self.people = people_data or {}
         self.schedule = {}
         self.shift_counts = {}
         self.required_night_dates = night_dates or []
         self.holiday_dates = holiday_dates or []
+        self.holiday_shifts = holiday_shifts or {}  # New: Holiday/Sunday shift types (SPLIT vs REGULAR)
         self.warnings = []  # New: track warnings when shifts cannot be assigned
         self.results = {'multi_run_ranking': []}  # New property to store results
 
@@ -563,6 +564,9 @@ class HospitalScheduler:
                     total_hours += self.settings['afternoon_shift_hours']
                 elif shift == 'mp':
                     total_hours += self.settings.get('sunday_mp_shift_hours', 12)
+                elif shift == 'split_mp':
+                    total_hours += (self.settings.get('sunday_split_shift_morning_hours', 4) + 
+                                  self.settings.get('sunday_split_shift_afternoon_hours', 2))
                 elif shift == 'night':
                     total_hours += self.settings['night_shift_hours']
         
@@ -591,6 +595,10 @@ class HospitalScheduler:
     def calculate_adjusted_afternoon_target(self, person_id):
         """Calculate adjusted afternoon shift target based on workload balancing - delegates to ShiftAssigner"""
         return self.shift_assigner.calculate_adjusted_afternoon_target(person_id)
+    
+    def _is_split_shift_day(self, date):
+        """Check if a date (Sunday or holiday) should have split shifts (4h + 2h) instead of regular MP (12h)"""
+        return self.holiday_shifts.get(date, 'REGULAR') == 'SPLIT'
 
     def print_schedule(self):
         """Print schedule to console"""
@@ -701,6 +709,7 @@ class HospitalScheduler:
             afternoon_count = 0
             night_count = 0
             mp_count = 0
+            split_mp_count = 0
             weekend_days = 0
             
             # Check monthly night shift violations
@@ -734,6 +743,8 @@ class HospitalScheduler:
                         afternoon_count += 1
                     elif shift == 'mp':
                         mp_count += 1
+                    elif shift == 'split_mp':
+                        split_mp_count += 1
                     elif shift == 'night':
                         night_count += 1
             
@@ -775,7 +786,8 @@ class HospitalScheduler:
                 total_hours, 
                 morning_count,      # M only (no MP included)
                 afternoon_count,    # P only (no MP included)
-                mp_count,           # MP only
+                mp_count,           # MP only (12h)
+                split_mp_count,     # SMP only (6h: 4h+2h)
                 night_count,        # N
                 ferie_count,        # F
                 tirocinio_count,    # T
@@ -783,18 +795,18 @@ class HospitalScheduler:
                 f"{avg_hours_per_week:.1f}"
             ])
         
-        # Print table header with MP column
-        print("┌────────────┬─────────────┬─────┬─────┬─────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
-        print("│ Person     │ Total Hours │  M  │  P  │ MP  │  N  │  F  │  T  │ Weekends │ Avg Hours per Week  │")
-        print("├────────────┼─────────────┼─────┼─────┼─────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
+        # Print table header with MP and SMP columns
+        print("┌────────────┬─────────────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬──────────┬─────────────────────┐")
+        print("│ Person     │ Total Hours │  M  │  P  │ MP  │ SMP │  N  │  F  │  T  │ Weekends │ Avg Hours per Week  │")
+        print("├────────────┼─────────────┼─────┼─────┼─────┼─────┼─────┼─────┼─────┼──────────┼─────────────────────┤")
         
         # Print data rows
         for row in summary_data:
-            person, total_h, m, p, mp, n, f, t, weekends, avg = row
-            print(f"│ {person:<10} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {mp:<2} │  {n:<2} │  {f:<2} │  {t:<2} │    {weekends:<5} │        {avg:<12} │")
+            person, total_h, m, p, mp, smp, n, f, t, weekends, avg = row
+            print(f"│ {person:<10} │     {total_h:<7} │  {m:<2} │  {p:<2} │  {mp:<2} │ {smp:<3} │  {n:<2} │  {f:<2} │  {t:<2} │    {weekends:<5} │        {avg:<12} │")
         
-        print("└────────────┴─────────────┴─────┴─────┴─────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
-        print("\nLegend: M=Morning, P=Afternoon, MP=Morning+Afternoon combined, N=Night, F=Ferie,\nT=Tirocinio, Weekends=Weekend days worked")
+        print("└────────────┴─────────────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴──────────┴─────────────────────┘")
+        print("\nLegend: M=Morning, P=Afternoon, MP=Morning+Afternoon combined (12h), SMP=Split Morning+Afternoon (4h+2h),\nN=Night, F=Ferie, T=Tirocinio, Weekends=Weekend days worked")
         
         # Print violations if any
         if violations:
@@ -853,16 +865,20 @@ class HospitalScheduler:
             is_holiday = current_date in self.holiday_dates
             
             if is_holiday:
-                # Holiday days need MP shifts
+                # Holiday days need MP or Split MP shifts
                 required_mp = self.settings.get('holiday_staff', 1)
                 actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
-                unassigned_count += max(0, required_mp - actual_mp)
+                actual_split_mp = self._count_assigned_shifts_on_date(current_date, 'split_mp')
+                total_assigned = actual_mp + actual_split_mp
+                unassigned_count += max(0, required_mp - total_assigned)
                 
             elif current_date.weekday() == 6:  # Sunday
-                # Sunday needs MP shifts
+                # Sunday needs MP or Split MP shifts
                 required_mp = self.settings.get('sunday_staff', 1)
                 actual_mp = self._count_assigned_shifts_on_date(current_date, 'mp')
-                unassigned_count += max(0, required_mp - actual_mp)
+                actual_split_mp = self._count_assigned_shifts_on_date(current_date, 'split_mp')
+                total_assigned = actual_mp + actual_split_mp
+                unassigned_count += max(0, required_mp - total_assigned)
                 
             elif current_date.weekday() == 5:  # Saturday
                 # Saturday morning
@@ -1226,6 +1242,16 @@ def main(settings_overrides=None):
         print(f"❌ File {holiday_file} not found")
     else:
         print(f"✅ Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
+    
+    # Load holiday/Sunday shift types
+    holiday_shifts_file = settings['data_files']['holiday_shifts_file']
+    holiday_shifts, holiday_shifts_success = data_loader.load_holiday_shifts(holiday_shifts_file, log_level='error')
+    
+    # Check if holiday shifts are loaded correctly
+    if not holiday_shifts_success:
+        print(f"💡 File {holiday_shifts_file} not found - all Sundays and holidays will be regular 12h MP shifts")
+    else:
+        print(f"✅ Loaded {len(holiday_shifts)} holiday/Sunday shift configurations from {holiday_shifts_file}")
 
     # Validate loaded data
     is_valid, validation_errors = data_loader.validate_data(people_data, night_dates, holiday_dates)
@@ -1243,6 +1269,7 @@ def main(settings_overrides=None):
         people_data=people_data, 
         night_dates=night_dates,
         holiday_dates=holiday_dates,
+        holiday_shifts=holiday_shifts,  # New: Pass holiday/Sunday shift types
         settings=settings,  # Pass the merged settings here
         config=config       # And also pass the config manager
     )
@@ -1309,6 +1336,7 @@ if __name__ == "__main__":
             'people_data_file': 'desiderata_DEC.xlsx',     # People/constraints data file with extension
             'night_dates_file': 'notti_DEC.xlsx',          # Required night dates file with extension
             'holiday_dates_file': 'festivi_DEC.xlsx',     # Holiday dates file with extension
+            'holiday_shifts_file': 'holiday_shifts_DEC.csv',   # Holiday/Sunday shift types file (SPLIT or REGULAR)
             # 'people_data_file': 'desiderata_empty.csv',     # People/constraints data file with extension
             # 'night_dates_file': 'notti_empty.csv',          # Required night dates file with extension
             # 'holiday_dates_file': 'festivi_empty.csv',     # Holiday dates file with extension
@@ -1316,7 +1344,7 @@ if __name__ == "__main__":
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
             'enabled': True,
-            'max_runs': 2000,
+            'max_runs': 200,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 1000,
             'accumulate_best_pass_runs': True
