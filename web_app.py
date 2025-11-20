@@ -143,7 +143,8 @@ def process_schedule(request_data):
             people_file = config.get('data_files.people_data_file')
             night_file = config.get('data_files.night_dates_file')
             holiday_file = config.get('data_files.holiday_dates_file')
-            print(f"Debug mode: Using default files {people_file}, {night_file}, {holiday_file}")
+            holiday_shifts_file = config.get('data_files.holiday_shifts_file', 'holiday_shifts_DEC.csv')
+            print(f"Debug mode: Using default files {people_file}, {night_file}, {holiday_file}, {holiday_shifts_file}")
             
             # Load data files with fallback logic (like main.py)
             people_data, people_data_success = data_loader.load_people_data(people_file, log_level='error')
@@ -174,12 +175,23 @@ def process_schedule(request_data):
                 raise Exception(f"Holiday dates file not found or invalid.")
             else:
                 print(f"✅ Loaded {len(holiday_dates)} holiday dates from {holiday_file}")
+            
+            # Load holiday/Sunday shift types
+            holiday_shifts, holiday_shifts_success = data_loader.load_holiday_shifts(holiday_shifts_file, log_level='error')
+            
+            # Check if holiday shifts are loaded correctly
+            if not holiday_shifts_success:
+                print(f"💡 File {holiday_shifts_file} not found - all Sundays and holidays will be regular 12h MP shifts")
+            else:
+                print(f"✅ Loaded {len(holiday_shifts)} holiday/Sunday shift configurations from {holiday_shifts_file}")
 
         else:
             # Save uploaded files and load from them (existing logic)
             people_file = None
             night_file = None
             holiday_file = None
+            holiday_shifts_file = None
+            holiday_shifts_file = None
             
             # Write files from extracted data
             if 'people_file' in files:
@@ -197,6 +209,11 @@ def process_schedule(request_data):
                 with open(holiday_file, 'wb') as f:
                     f.write(files['holiday_file']['content'])
             
+            if 'holiday_shifts_file' in files:
+                holiday_shifts_file = os.path.join(temp_dir, 'holiday_shifts.' + files['holiday_shifts_file']['filename'].split('.')[-1])
+                with open(holiday_shifts_file, 'wb') as f:
+                    f.write(files['holiday_shifts_file']['content'])
+            
             # Load people data (must be provided)
             people_data, people_data_success = data_loader.load_people_data(people_file, log_level='error') if people_file else ({}, False)
 
@@ -211,6 +228,12 @@ def process_schedule(request_data):
                 holiday_dates, holiday_dates_success = data_loader.load_holiday_dates(holiday_file, log_level='error')
             else:
                 holiday_dates, holiday_dates_success = [], True
+                
+            # Load holiday/Sunday shift types: if file provided, check success; if not, treat as empty and success True
+            if holiday_shifts_file:
+                holiday_shifts, holiday_shifts_success = data_loader.load_holiday_shifts(holiday_shifts_file, log_level='error')
+            else:
+                holiday_shifts, holiday_shifts_success = {}, True
         
         # Write some terminal output for debugging
         print(f"{'✅' if people_data_success else '❌'} People file {'loaded successfully' if people_data_success else 'failed to load'} (count: {len(people_data)})")
@@ -222,6 +245,14 @@ def process_schedule(request_data):
             print(f"{'✅' if holiday_dates_success else '❌'} Holiday dates file {'loaded successfully' if holiday_dates_success else 'failed to load'} (count: {len(holiday_dates)})")
         else:
             print("⚠️  No holiday dates file provided, proceeding with empty holiday dates.")
+        if holiday_shifts_file:
+            print(f"{'✅' if holiday_shifts_success else '❌'} Holiday shifts file {'loaded successfully' if holiday_shifts_success else 'failed to load'} (count: {len(holiday_shifts)})")
+        else:
+            print("⚠️  No holiday shifts file provided, proceeding with default regular MP shifts.")
+        if holiday_shifts_file:
+            print(f"{'✅' if holiday_shifts_success else '❌'} Holiday shifts file {'loaded successfully' if holiday_shifts_success else 'failed to load'} (count: {len(holiday_shifts)})")
+        else:
+            print("⚠️  No holiday shifts file provided, proceeding with default regular MP shifts.")
 
         # Check if people, night and holidays data is loaded correctly
         if not people_data_success:
@@ -230,6 +261,7 @@ def process_schedule(request_data):
             raise Exception(f"Night dates file not found or invalid.")
         if not holiday_dates_success:
             raise Exception(f"Holiday dates file not found or invalid.")
+        # Note: holiday_shifts_success failure is not critical - system can work without it
         
         # Create config manager (now available for both modes)
         config = ConfigManager()
@@ -335,6 +367,7 @@ def process_schedule(request_data):
             people_data=people_data,
             night_dates=night_dates,
             holiday_dates=holiday_dates,
+            holiday_shifts=holiday_shifts,
             settings=form_overrides,  # Only pass the form overrides
             config=config
         )

@@ -612,7 +612,7 @@ class ShiftAssigner:
         eligibility_debug = {}  # Track reasons for ineligibility
         
         # NEW: Weekend shift balancing - exclude person(s) with maximum weekend shifts
-        is_weekend_shift = date.weekday() >= 5 and shift in ['morning', 'afternoon', 'mp']
+        is_weekend_shift = date.weekday() >= 5 and shift in ['morning', 'afternoon', 'mp', 'split_mp']
         excluded_people = set()
         
         if is_weekend_shift:
@@ -975,6 +975,12 @@ class ShiftAssigner:
                     if afternoon_shifts_this_week > 0:
                         base_priority = (base_priority[0] + 1, afternoon_shifts_this_week, base_priority[1])
             
+            # NEW: For weekend shifts, prioritize by weekend shift count first
+            if is_weekend_shift:
+                weekend_count = self.scheduler.shift_counts[person_id]['weekend_days']
+                # Lower weekend count gets higher priority (lower score)
+                base_priority = (base_priority[0], weekend_count, base_priority[1])
+            
             # NEW: Add priority from CSV data (but NOT for night shifts - they're handled strictly elsewhere)
             priority_bonus = 0
             if is_weekend_shift and self.scheduler.settings['priority_assignment']['weekend_priority_enabled']:
@@ -983,7 +989,11 @@ class ShiftAssigner:
             
             # Apply priority bonus (negative because we use min() - lower is better)
             if priority_bonus != 0:
-                base_priority = (base_priority[0], base_priority[1] + priority_bonus)
+                if is_weekend_shift:
+                    # For weekend shifts with count prioritization, add bonus to the last component
+                    base_priority = (base_priority[0], base_priority[1], base_priority[2] + priority_bonus)
+                else:
+                    base_priority = (base_priority[0], base_priority[1] + priority_bonus)
             
             # NEW: Option 5 - Add randomization to tie-breaking
             if self.scheduler.settings.get('randomize_priority_tiebreaking', False):
@@ -995,40 +1005,57 @@ class ShiftAssigner:
     
     def _find_best_person_weekend_strict_priority(self, eligible_people, date, shift):
         """Find best person for weekend shift using strict priority system"""
-        # Group people by weekend priority
-        priority_groups = {}
+        # Group people by weekend shift count first (minimum shifts get highest priority)
+        weekend_count_groups = {}
         for person_id in eligible_people:
-            priority = self.scheduler.people[person_id].get('weekend_priority', 0)
-            if priority not in priority_groups:
-                priority_groups[priority] = []
-            priority_groups[priority].append(person_id)
+            weekend_count = self.scheduler.shift_counts[person_id]['weekend_days']
+            if weekend_count not in weekend_count_groups:
+                weekend_count_groups[weekend_count] = []
+            weekend_count_groups[weekend_count].append(person_id)
         
-        # Sort priority levels (highest first)
-        sorted_priorities = sorted(priority_groups.keys(), reverse=True)
-        self.logger.log('weekend_shift_balancing', 'debug', f"Weekend priority groups for {date} ({shift}): {[(p, priority_groups[p]) for p in sorted_priorities]}")
+        # Sort by weekend count (lowest first - those with fewer shifts get priority)
+        sorted_weekend_counts = sorted(weekend_count_groups.keys())
+        self.logger.log('weekend_shift_balancing', 'debug', f"Weekend count groups for {date} ({shift}): {[(count, weekend_count_groups[count]) for count in sorted_weekend_counts]}")
         
-        # Try each priority level from highest to lowest
-        for priority_level in sorted_priorities:
-            candidates = priority_groups[priority_level].copy()
-            if not candidates:
+        # Try each weekend count level from lowest to highest (fewest shifts first)
+        for weekend_count in sorted_weekend_counts:
+            candidates_at_count = weekend_count_groups[weekend_count].copy()
+            if not candidates_at_count:
                 continue
+            
+            self.logger.log('weekend_shift_balancing', 'debug', f"Trying weekend count level {weekend_count} for weekend {shift} on {date}: {candidates_at_count}")
+            
+            # Within same weekend count, group by manual priority as tiebreaker
+            priority_groups = {}
+            for person_id in candidates_at_count:
+                priority = self.scheduler.people[person_id].get('weekend_priority', 0)
+                if priority not in priority_groups:
+                    priority_groups[priority] = []
+                priority_groups[priority].append(person_id)
+            
+            # Sort priority levels (highest first) within this weekend count group
+            sorted_priorities = sorted(priority_groups.keys(), reverse=True)
+            
+            # Try each priority level from highest to lowest within this weekend count
+            for priority_level in sorted_priorities:
+                candidates = priority_groups[priority_level].copy()
+                if not candidates:
+                    continue
+                    
+                # Randomize within same priority level to avoid bias
+                random.shuffle(candidates)
                 
-            # Randomize within same priority level to avoid bias
-            random.shuffle(candidates)
-            
-            self.logger.log('weekend_shift_balancing', 'debug', f"Trying priority level {priority_level} for weekend {shift} on {date}: {candidates}")
-            
-            # For weekend shifts, we can return the first available candidate at this priority level
-            # (unlike night shifts which have additional monthly limit checks)
-            for person_id in candidates:
-                # Additional checks can be added here if needed (e.g., monthly weekend limits)
-                self.logger.log('weekend_shift_balancing', 'debug', f"Selected person {person_id} (priority {priority_level}) for weekend {shift} on {date}")
-                return person_id
-            
-            self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at priority level {priority_level} for weekend {shift} on {date}")
+                self.logger.log('weekend_shift_balancing', 'debug', f"Trying weekend count {weekend_count}, priority level {priority_level} for weekend {shift} on {date}: {candidates}")
+                
+                # Return the first available candidate at this level
+                for person_id in candidates:
+                    self.logger.log('weekend_shift_balancing', 'debug', f"Selected person {person_id} (weekend_count={weekend_count}, priority={priority_level}) for weekend {shift} on {date}")
+                    return person_id
+                
+                self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at weekend count {weekend_count}, priority level {priority_level} for weekend {shift} on {date}")
         
-        # If no one found at any priority level, return None
-        self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at any priority level for weekend {shift} on {date}")
+        # If no one found at any level, return None
+        self.logger.log('weekend_shift_balancing', 'debug', f"No suitable candidates found at any weekend count level for weekend {shift} on {date}")
         return None
 
     def can_assign_shift(self, person_id, date, shift):
