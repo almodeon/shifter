@@ -1147,7 +1147,8 @@ def main(settings_overrides=None):
             'give_precedence_to_afternoon_over_morning': True,  # Assign afternoon shifts before morning shifts
             'prefer_not_in_internship': True,  # Prefer people not in internship for afternoon shifts
             'max_consecutive_afternoons': 1,  # Max consecutive afternoons per person
-            'allow_consecutive_afternoons': False  # Allow consecutive afternoon shifts
+            'allow_consecutive_afternoons': False,  # Allow consecutive afternoon shifts
+            'prioritize_afternoon_for_forbidden_morning': True,  # Give priority to afternoon shifts for people with forbidden morning on same day
         },
         
         # Logging/Output verbosity settings (silence, error, info, debug)

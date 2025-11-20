@@ -300,6 +300,7 @@ def process_schedule(request_data):
                 'prefer_not_in_internship': 'prefer_not_in_internship' in form,
                 'max_consecutive_afternoons': int(form.get('max_consecutive_afternoons', 1)),
                 'allow_consecutive_afternoons': 'allow_consecutive_afternoons' in form,
+                'prioritize_afternoon_for_forbidden_morning': 'prioritize_afternoon_for_forbidden_morning' in form,
             },
             
             # NEW: Training options (max monthly afternoon shifts during training)

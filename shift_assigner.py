@@ -810,6 +810,39 @@ class ShiftAssigner:
                     self.scheduler.logger.log('afternoon_balancing', 'debug', 
                         f"No balanced eligible people found, using all {len(eligible_people)} eligible")
         
+        # NEW: Prioritize afternoon shifts for people with forbidden morning on the same day
+        if (shift == 'afternoon' and 
+            len(eligible_people) > 1 and 
+            self.scheduler.settings['afternoon_balancing'].get('prioritize_afternoon_for_forbidden_morning', False)):
+            
+            # Separate people into those with and without forbidden morning on this date
+            forbidden_morning_people = []
+            other_people = []
+            
+            for person_id in eligible_people:
+                person = self.scheduler.people[person_id]
+                has_forbidden_morning = False
+                
+                # Check if person has forbidden morning shift on this date
+                for forbidden in person.get('forbidden_shifts', []):
+                    if forbidden and forbidden['date'] == date and 'morning' in forbidden['shifts']:
+                        has_forbidden_morning = True
+                        break
+                
+                if has_forbidden_morning:
+                    forbidden_morning_people.append(person_id)
+                else:
+                    other_people.append(person_id)
+            
+            # If there are people with forbidden morning, prioritize them for afternoon shifts
+            if forbidden_morning_people:
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"Forbidden morning priority on {date}: {len(forbidden_morning_people)} with forbidden morning, {len(other_people)} others - prioritizing forbidden morning")
+                eligible_people = forbidden_morning_people
+            else:
+                self.scheduler.logger.log('afternoon_balancing', 'debug', 
+                    f"Forbidden morning priority on {date}: no people with forbidden morning, using all {len(eligible_people)} eligible")
+        
         # Apply internship preference for afternoon shifts as tie breaker
         if (shift == 'afternoon' and 
             len(eligible_people) > 1 and 
@@ -865,6 +898,18 @@ class ShiftAssigner:
             # NEW: High priority for people on tirocinio days for afternoon shifts
             person = self.scheduler.people[person_id]
             is_tirocinio_day = 'tirocinio_dates' in person and date in person['tirocinio_dates']
+            
+            # NEW: Highest priority for people with forbidden morning on this day (for afternoon shifts)
+            has_forbidden_morning = False
+            if shift == 'afternoon':
+                for forbidden in person.get('forbidden_shifts', []):
+                    if forbidden and forbidden['date'] == date and 'morning' in forbidden['shifts']:
+                        has_forbidden_morning = True
+                        break
+            
+            if has_forbidden_morning and shift == 'afternoon':
+                # Give absolute highest priority to people with forbidden morning for afternoon shifts
+                return (-2, weekly_hours)  # -2 ensures highest priority (higher than tirocinio)
             
             if is_tirocinio_day and shift == 'afternoon':
                 # Give highest priority to people on tirocinio days for afternoon shifts
