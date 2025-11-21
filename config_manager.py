@@ -50,6 +50,7 @@ class ConfigManager:
             'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
             'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
             'strict_night_shift_balancing': False,  # Enforce strict night shift distribution (always get the person with the least nights so far)
+            'saturday_night_rest_monday': True,  # Enforce mandatory rest on Monday after Saturday-Sunday night shifts
 
             # Data file names (with extensions)
             'data_files': {

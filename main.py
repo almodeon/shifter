@@ -1089,6 +1089,7 @@ def main(settings_overrides=None):
         'fill_up_to_minimum_hours': True,  # Add extra shifts to reach minimum hours
         'prevent_consecutive_weekend_days': True,  # Prevent working both Saturday and Sunday in same weekend
         'strict_night_shift_balancing': False,  # Enforce strict night shift distribution
+        'saturday_night_rest_monday': True,  # Enforce mandatory rest on Monday after Saturday-Sunday night shifts
         
         # Data file names (with extensions)
         'data_files': {
@@ -1345,7 +1346,7 @@ if __name__ == "__main__":
         'strict_night_shift_balancing': True,  # Enforce strict night shift distribution
         'multi_run': {
             'enabled': True,
-            'max_runs': 1000,
+            'max_runs': 200,
             'only_consider_best_passes': True,
             'target_best_pass_runs': 1000,
             'accumulate_best_pass_runs': True

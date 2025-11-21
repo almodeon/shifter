@@ -86,6 +86,29 @@ class ShiftAssigner:
                 if best_person:
                     self._assign_shift(best_person, date, 'night')
                     self.scheduler.logger.log('night_shift_assignment', 'info', f"Assigned night shift: {best_person} on {date}")
+                    
+                    # CRITICAL: Block the next day completely for this person
+                    next_date = date + timedelta(days=1)
+                    if next_date <= dates_list[-1]:  # Only if next day is within scheduling period
+                        # Clear any existing shifts on the next day
+                        if best_person not in self.scheduler.schedule:
+                            self.scheduler.schedule[best_person] = {}
+                        self.scheduler.schedule[best_person][next_date] = ['rest_after_night']
+                        self.scheduler.logger.log('night_shift_assignment', 'debug', f"  Blocked {next_date} for person {best_person} (rest after night shift)")
+                    
+                    # SPECIAL CASE: If this is a Saturday night shift, also block Monday
+                    if (date.weekday() == 5 and  # Saturday
+                        self.scheduler.settings.get('saturday_night_rest_monday', True)):
+                        monday_date = date + timedelta(days=2)  # Monday is 2 days after Saturday
+                        # Block Monday for this person (no bounds check needed for constraints)
+                        if best_person not in self.scheduler.schedule:
+                            self.scheduler.schedule[best_person] = {}
+                        if monday_date not in self.scheduler.schedule[best_person]:
+                            self.scheduler.schedule[best_person][monday_date] = []
+                        # Only add rest if not already there
+                        if 'rest_after_saturday_night' not in self.scheduler.schedule[best_person][monday_date]:
+                                self.scheduler.schedule[best_person][monday_date].append('rest_after_saturday_night')
+                                self.scheduler.logger.log('night_shift_assignment', 'debug', f"  Blocked Monday {monday_date} for person {best_person} (rest after Saturday night shift)")
                 else:
                     failure_msg = f"Failed to assign night shift on {date} (position {i+1})"
                     self.scheduler.warnings.append(failure_msg)  # ADD THIS LINE
@@ -382,8 +405,9 @@ class ShiftAssigner:
         
         # Check if this date is blocked for rest after night shift
         current_shifts = self.scheduler.schedule[person_id].get(date, [])
-        if 'rest_after_night' in current_shifts:
-            return False, "blocked for rest after night shift"
+        if 'rest_after_night' in current_shifts or 'rest_after_saturday_night' in current_shifts:
+            rest_type = "rest after night shift" if 'rest_after_night' in current_shifts else "rest after Saturday night shift"
+            return False, f"blocked for {rest_type}"
         
         # Don't add if person already has morning shift
         if 'morning' in current_shifts:
@@ -534,6 +558,21 @@ class ShiftAssigner:
                             # Clear any existing shifts on the next day
                             self.scheduler.schedule[person_id][next_date] = ['rest_after_night']
                             self.logger.log('night_shift_assignment', 'debug', f"  Blocked {next_date} for person {person_id} (rest after night shift)")
+                        
+                        # SPECIAL CASE: If this is a Saturday night shift, also block Monday
+                        if (date.weekday() == 5 and  # Saturday
+                            self.scheduler.settings.get('saturday_night_rest_monday', True)):
+                            monday_date = date + timedelta(days=2)  # Monday is 2 days after Saturday
+                            if monday_date <= dates[-1]:  # Only if Monday is within scheduling period
+                                # Block Monday for this person
+                                if person_id not in self.scheduler.schedule:
+                                    self.scheduler.schedule[person_id] = {}
+                                if monday_date not in self.scheduler.schedule[person_id]:
+                                    self.scheduler.schedule[person_id][monday_date] = []
+                                # Only add rest if not already there
+                                if 'rest_after_saturday_night' not in self.scheduler.schedule[person_id][monday_date]:
+                                    self.scheduler.schedule[person_id][monday_date].append('rest_after_saturday_night')
+                                    self.logger.log('night_shift_assignment', 'debug', f"  Blocked Monday {monday_date} for person {person_id} (rest after Saturday night shift)")
                         
                         assigned = True
                         break
@@ -1167,7 +1206,7 @@ class ShiftAssigner:
                 if sunday in self.scheduler.schedule[person_id]:
                     sunday_shifts = self.scheduler.schedule[person_id][sunday]
                     # Check if has non-night shifts on Sunday
-                    non_night_shifts = [s for s in sunday_shifts if s not in ['night', 'rest_after_night']]
+                    non_night_shifts = [s for s in sunday_shifts if s not in ['night', 'rest_after_night', 'rest_after_saturday_night']]
                     if non_night_shifts:
                         return False, f"would work consecutive weekend days (Sunday {sunday} already assigned: {non_night_shifts})"
                         
@@ -1176,7 +1215,7 @@ class ShiftAssigner:
                 if saturday in self.scheduler.schedule[person_id]:
                     saturday_shifts = self.scheduler.schedule[person_id][saturday]
                     # Check if has non-night shifts on Saturday
-                    non_night_shifts = [s for s in saturday_shifts if s not in ['night', 'rest_after_night']]
+                    non_night_shifts = [s for s in saturday_shifts if s not in ['night', 'rest_after_night', 'rest_after_saturday_night']]
                     if non_night_shifts:
                         return False, f"would work consecutive weekend days (Saturday {saturday} already assigned: {non_night_shifts})"
         
@@ -1201,7 +1240,7 @@ class ShiftAssigner:
                 if current_month_date.weekday() >= 5 and current_month_date in self.scheduler.schedule[person_id]:
                     day_shifts = self.scheduler.schedule[person_id][current_month_date]
                     # Only count as weekend day if has non-night shifts and not just rest
-                    non_night_shifts = [s for s in day_shifts if s not in ['night', 'rest_after_night']]
+                    non_night_shifts = [s for s in day_shifts if s not in ['night', 'rest_after_night', 'rest_after_saturday_night']]
                     if non_night_shifts:  # Has morning, afternoon, or mp shifts
                         weekend_days_this_month += 1
                 current_month_date += timedelta(days=1)
@@ -1214,8 +1253,9 @@ class ShiftAssigner:
         current_shifts = self.scheduler.schedule[person_id].get(date, [])
         if current_shifts:
             # If this date is blocked for rest after night shift, cannot assign anything
-            if 'rest_after_night' in current_shifts:
-                return False, "blocked for rest after night shift"
+            if 'rest_after_night' in current_shifts or 'rest_after_saturday_night' in current_shifts:
+                rest_type = "rest after night shift" if 'rest_after_night' in current_shifts else "rest after Saturday night shift"
+                return False, f"blocked for {rest_type}"
             
             # If trying to assign night shift but already has other shifts
             if shift == 'night':
@@ -1240,7 +1280,7 @@ class ShiftAssigner:
                 return False, f"Saturday morning+afternoon not allowed, already has: {current_shifts}"
         else:
             # If no current shifts, check if this date is blocked for rest after night shift
-            if 'rest_after_night' in current_shifts:
+            if 'rest_after_night' in current_shifts or 'rest_after_saturday_night' in current_shifts:
                 return False
         
         # Enhanced night shift constraints
@@ -1250,7 +1290,7 @@ class ShiftAssigner:
             if prev_date in self.scheduler.schedule[person_id]:
                 prev_shifts = self.scheduler.schedule[person_id][prev_date]
                 # If person worked the day before (and it's not just a rest day), cannot assign night
-                if prev_shifts and 'rest_after_night' not in prev_shifts:
+                if prev_shifts and 'rest_after_night' not in prev_shifts and 'rest_after_saturday_night' not in prev_shifts:
                     return False, f"worked day before night shift ({prev_date}): {prev_shifts}"
             
             # Check day after: must be completely free
@@ -1258,7 +1298,7 @@ class ShiftAssigner:
             if next_date in self.scheduler.schedule[person_id]:
                 next_shifts = self.scheduler.schedule[person_id][next_date]
                 # If next day already has any shifts (other than being marked for rest), cannot assign night
-                if next_shifts and 'rest_after_night' not in next_shifts:
+                if next_shifts and 'rest_after_night' not in next_shifts and 'rest_after_saturday_night' not in next_shifts:
                     return False, f"day after night shift already occupied ({next_date}): {next_shifts}"
         else:
             # For non-night shifts, check if previous day had a night shift
@@ -1267,6 +1307,17 @@ class ShiftAssigner:
                 prev_shifts = self.scheduler.schedule[person_id][prev_date]
                 if 'night' in prev_shifts:
                     return False, f"day after night shift ({prev_date})"
+            
+            # Check for Saturday night rest on Monday rule
+            if (date.weekday() == 0 and  # Monday
+                self.scheduler.settings.get('saturday_night_rest_monday', True)):
+                # Check if this person had a night shift on Saturday (2 days ago)
+                saturday_date = date - timedelta(days=2)
+                if (saturday_date.weekday() == 5 and  # Confirm it's Saturday
+                    saturday_date in self.scheduler.schedule[person_id]):
+                    saturday_shifts = self.scheduler.schedule[person_id][saturday_date]
+                    if 'night' in saturday_shifts:
+                        return False, f"mandatory rest on Monday after Saturday night shift ({saturday_date})"
         
         # Check continuous rest requirement
         week_start = date - timedelta(days=date.weekday())
@@ -1353,7 +1404,7 @@ class ShiftAssigner:
                             self.scheduler.settings.get('sunday_split_shift_afternoon_hours', 2))
                 elif shift == 'night':
                     hours += self.scheduler.settings['night_shift_hours']
-                # Don't count 'rest_after_night' as hours
+                # Don't count rest types as hours (rest_after_night, rest_after_saturday_night)
 
         return hours
     
@@ -1394,7 +1445,7 @@ class ShiftAssigner:
         if date.weekday() >= 5:  # Weekend
             existing_shifts = self.scheduler.schedule[person_id][date]
             # Count as weekend day if this is their first non-night shift on this weekend day
-            non_night_shifts = [s for s in existing_shifts if s not in ['night', 'rest_after_night']]
+            non_night_shifts = [s for s in existing_shifts if s not in ['night', 'rest_after_night', 'rest_after_saturday_night']]
             if len(non_night_shifts) == 1:  # This is the first weekend shift for this day
                 self.scheduler.shift_counts[person_id]['weekend_days'] += 1
     
