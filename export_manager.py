@@ -89,6 +89,8 @@ class ExportManager:
                     elif shift == 'night':
                         shift_codes.append('N')
                         night_count += 1
+                    elif shift == 'rest_after_saturday_night':
+                        shift_codes.append('(RN)')  # Saturday night rest marker
                 
                 shift_str = "".join(shift_codes) if shift_codes else ""
                 

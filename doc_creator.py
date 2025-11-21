@@ -385,6 +385,12 @@ class ScheduleDocxCreator:
                 assenze_labels.append((pid, self.night_shift_labels['start']))
             for pid in smonto_pids:
                 assenze_labels.append((pid, self.night_shift_labels['end']))
+            
+            # Add Saturday night rest (recupero) entries
+            for pid in people_ids:
+                shifts = schedule[pid].get(date_str, [])
+                if 'rest_after_saturday_night' in shifts:
+                    assenze_labels.append((pid, 'RECUPERO'))
             # Only add vacation pids if allowed by show_vacations_on_holidays or not a weekend/holiday
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             is_weekend = dt.weekday() in (5, 6)
@@ -414,6 +420,7 @@ class ScheduleDocxCreator:
                     p.add_run(", ")
                 if label:
                     run = p.add_run(f"{pid} ({label})")
+                    # Use green color for all labels (MONTO/SMONTO NOTTE and RECUPERO)
                     run.font.color.rgb = RGBColor(
                         int(self.night_shift_color[0:2], 16),
                         int(self.night_shift_color[2:4], 16),
